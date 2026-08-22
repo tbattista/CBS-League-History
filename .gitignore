@@ -1,0 +1,17 @@
+# --- Secrets: never commit these -------------------------------------------
+# curl.txt holds a live CBS session cookie copied from your browser.
+.env
+curl.txt
+*.cookies
+secrets/
+
+# --- Dependencies / build ---------------------------------------------------
+node_modules/
+dist/
+.DS_Store
+
+# --- Scraper output ---------------------------------------------------------
+# Raw HTML snapshots are the actual backup, so they SHOULD be committed.
+# They are kept out of npm/lint paths but deliberately NOT ignored here.
+# If the snapshot set ever gets too large for git, switch to git-lfs rather
+# than ignoring it -- losing these means losing the backup.
