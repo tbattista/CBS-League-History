@@ -1,0 +1,403 @@
+
+<style>
+.previous-period-lock-icon:before {
+    margin-left: 5px;
+    font-size: 12px;
+}
+.weather-icon:before {
+    margin-left: 5px;
+}
+.gameCellTop{
+    white-space: nowrap;
+}
+
+.gameCellContainer{
+    white-space: nowrap;
+    display: inline-block;
+}
+.gameCell {
+    width: 80px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; 
+    display: inline-block;
+    vertical-align: bottom;
+}
+
+.icon-starting-pitcher {
+    display: inline-block;
+    margin-right: 3px;
+}
+table.data tr td div a.battingOrderLink{
+    font-family:FS Industrie,"Helvetica","Arial",sans-serif;
+    font-weight:600;
+    font-style:normal;
+    font-size:11px;
+    color:#3787d9;
+    letter-spacing:0;
+    margin-top:10px;
+} 
+table.data tr td div a.battingOrderLink:hover{
+    color:#065dba;
+    }
+
+ table.futureDraftPicksRosterJS tr.subtitle,
+ table#draftPicksRosterJS tr.subtitle:hover {
+     cursor:pointer;
+     }
+</style>
+
+<script>
+CBSi.namespace("app.LineupBuilder");var Dom=YAHOO.util.Dom;CBSi.app.LineupBuilder=function(t){this.content="",this.contentDiv="",this.currentView="",this.progresIndicator="",this.progresIndicatoName="",this.basePath=t.basePath,this.queryParams=t.queryParams,this.commishMode=t.commishMode,this.commishAction=t.commishAction,this.usesKeepers=t.usesKeepers||0,this.maxKeepers=t.maxKeepers||0,this.showSportslineAccrOverview=t.showSportslineAccrOverview||0,this.showGamblingAccr=t.showGamblingAccreditation||0,this.mine=Number(t.mine),this.allTeams=Number(t.allTeams),this.maxBench=Number(t.maxBench),this.viewCache={},this.origColState={},this.colState={},this.trackMoves=[],this.trackKeeperMoves=[],this.moveCount=0,this.moveKeeperCount=0,this.numChanges=0,this.changedColor="#ffff99",this.notChangedColor="white",this.optionRegExp=new RegExp("selected"),this.colLimit=t.colLimit||5,this.currentPage=t.currentPage||1,this.rosterMap=t.rosterMap.rosterMap,this.token=t.token,this.statusLookup=t.statusLookup,this.fantasyApiHTTPServer=t.fantasyApiHTTPServer},CBSi.app.LineupBuilder.prototype={init:function(){var c=this;c.hideCommishContracts(),"1"==c.showSportslineAccrOverview&&$(".accreditation.accrNavBar").show(),"1"==c.showGamblingAccr&&$(".gamblingAccreditation").show(),$(".setLineupButton").off("click").on("click",function(t){var e,s,a={team:$("input[name=team]").val()},o=c.rosterMap.slot,r=$("#rosterReportContainer"),n=($("li.setLineup").attr("loc"),$("span.rosterBar").children(".active").attr("href"));t.preventDefault();function l(){if(c.usesKeepers&&(a.keepers=[]),!$(this).hasClass("disabled")){for(key in o)e=o[key],c.usesKeepers&&e.elig&&e.elig.keeper&&!e.MULTICATDUMMYROW&&a.keepers.push(e.id),e.changed&&"EMPTY"!=e.id&&!e.invalid&&e.status&&c.statusLookup[e.status]&&(a[c.statusLookup[e.status]]||(a[c.statusLookup[e.status]]={}),a[c.statusLookup[e.status]][e.id]={pos:e.pos});c.usesKeepers&&0==a.keepers.length&&(a.reset_keepers=1),a.point=$("input[name=point]").val(),a.override=$("input[name=override]").val(),c.commishMode&&(a.commish_action=c.commishAction);var t={payload:JSON.stringify(a),access_token:c.token,version:"2.0"};s=n+a.point,$("li.setLineup").attr("loc",s),r.fadeTo(200,.1),Waldo.retrieve({uri:"/api/league/transactions/lineup",uriAlias:"setLineup",params:t,type:"PUT",callback:{success:function(){var t=this.data();if(t.warnings&&0<t.warnings.length)for(i=0,len=t.warnings.length;i<len;i++)setLineupWarnings.push(t.warnings[i].msg);$(".rosterReportReload").trigger("click");try{refreshBids(["leader_top","leader_plus2_bottom"])}catch(t){}},failure:function(){r.fadeTo(200,1)}}})}}"object"==typeof playerWarningsMessage&&playerWarningsMessage.hasOwnProperty("fullMessage")&&""!==playerWarningsMessage.fullMessage?c._confirmPlayerWarning(playerWarningsMessage.fullMessage).then(function(){l()},function(){}):playerWarningsMessage.fullMessage||l()}),$("div#lineup_views").undelegate("div.commishSm").delegate("div.commishSm","click",function(t){var e,s=$(this);s.hasClass("Edit")?e="&commish_edit=1":s.hasClass("Pos")&&(e="&all_positions=1"),s.hasClass("Contracts")?lineupBuilder.showCommishContracts(s.position()):(e=$(".rosterReportReload").attr("href")+e,$(".rosterReportReload").attr("href",e),$(".rosterReportReload").trigger("click"))}),$("div#lineup_views").delegate("div.moveSource, div.actionButtonLg","mouseenter",function(t){var i=$(this).parents(".playerRow");i.is(":data(draggable)")||i.draggable({revert:"invalid",revertDuration:100,handle:"div.editButtonLg, div.editButtonCommishLg, div.actionButtonLg",cursorAt:{left:20},helper:function(t){i.children(".editCell");var e=i.children(".editCell").next(),s=i.children(".editCell").next().next();return $('<table cellpadding="0" cellspacing="0" border="0" class="data"><tr class="dragHelper row1"><td class=\'icon-arrange icon-white\' style=\'padding:20px\'></td><td>'+e.html()+"</td><td>"+s.html()+"</tr></table>").appendTo("body")},start:function(t,e){var s=this.id,i=c.rosterMap.slot[s];c.sourceSpot=s,c.initPlayerMove(s,i),c.acceptedTarget=!1},drag:function(t,e){c._removeFantasyBalloonMessage(),c.acceptedTarget?($(".dragHelper").css("border","1px solid #3787d9"),$(".dragHelper").children("td").css("color","#232323"),$(".dragHelper").children("td").children("a").css("color","#232323"),$(".dragHelper").children("td").css("backgroundColor","#ffffff")):($(".dragHelper").css("border","0"),$(".dragHelper").children("td").css("backgroundColor",""),$(".dragHelper").children("td").css("color","#ffffff"),$(".dragHelper").children("td").children("a").css("color","#ffffff"))},stop:function(t,e){$.ui.ddmanager.drop($(this).data("draggable"),t)||(c.resetSpots(),c.acceptedTarget=!1)}})}),$("div#lineup_views").delegate("div.moveSource","click",function(t){var e=$(this).parent().parent().attr("id"),s=c.rosterMap.slot[e];c._removeFantasyBalloonMessage(),c.sourceSpot=e,c.initPlayerMove(e,s)}),$("div#lineup_views").delegate("div.moveTarget","click",function(t){var e=$(this).parent().parent().attr("id"),s=c.rosterMap.slot[e];c._removeFantasyBalloonMessage(),c.targetSpot=e,c.completePlayerMove(s)}),$("div#lineup_views").delegate("div.moveCancel","click",function(t){c.resetSpots()}),$("a.changePos").die("click").live("click",function(t){t.preventDefault();t=$(this).parent().parent().attr("id");c._removeFantasyBalloonMessage(),c.showSwapPositions(this,t)}),c.allTeams||c.resetSpots(),c.usesKeepers&&$(".selectAllKeepersCheckbox").live("click",function(t){var s=0;$(this).is(":checked")?$(this).closest("table").find("input[type=checkbox]").each(function(t,e){$(e).hasClass("selectAllKeepersCheckbox")||$(e).is(":checked")||($(e).prop("checked",!0),lineupBuilder.setKeeper(e))}):$(this).closest("table").find("input[type=checkbox]").each(function(t,e){!$(e).hasClass("selectAllKeepersCheckbox")&&$(e).is(":checked")&&($(e).prop("checked",!1),lineupBuilder.setKeeper(e))}),!(0<c.maxKeepers)||($(this).closest("form").find("input[type=checkbox]").each(function(t,e){!$(e).hasClass("selectAllKeepersCheckbox")&&$(e).is(":checked")&&$(e).is(":visible")&&s++}),s>c.maxKeepers)?lineupBuilder.deactivateButton():lineupBuilder.activateButton()})},initPlayerMove:function(a,o){var r=this,n={};o.group;$("#posDialog").hide(),$("#contractsDialog").hide(),$("#contractsCancel").hide(),$(".playerRow").filter(":not(.spacer)").each(function(t,e){var s=$(e).attr("id"),i=r.rosterMap.slot[s];i&&($(e).is(":data(droppable)")||$(e).droppable({disabled:!0,addClasses:!1,drop:function(t,e){var s=this.id,i=r.rosterMap.slot[s];r.targetSpot=s,r.completePlayerMove(i),r.acceptedTarget=!1},over:function(t,e){r.acceptedTarget=!0},out:function(t,e){r.acceptedTarget=!1}}),"A"==i.status&&"EMPTY"==i.id&&(void 0===n[i.pos]&&(n[i.pos]=0),n[i.pos]++),a==s?r.activateSource(e):"A"!=o.status||o.eligCats&&o.eligCats.catEligArray&&0!=o.eligCats.catEligArray.length&&!(0<o.eligCats.catEligArray.length&&o.eligCats.catEligHash[i.group])||i.invalid||i.lockState&&0!=i.lockState&&(!r.commishMode||!i.lockState&&1!=i.lockState)||!("A"==i.status&&o.elig&&o.elig.posEligHash[i.pos]||"A"!=i.status)?"A"!=o.status&&(i.status!=o.status||o.invalid&&"EMPTY"==i.id&&"A"!=i.status||o.group!=i.group&&"EMPTY"==i.id&&"A"!=i.status)&&(!o.eligCats||!o.eligCats.catEligArray||0==o.eligCats.catEligArray.length||0<o.eligCats.catEligArray.length&&o.eligCats.catEligHash[i.group])&&o.elig&&o.elig.posEligHash[i.pos]&&!i.invalid&&(!i.lockState||0==i.lockState||r.commishMode&&(i.lockState||1==i.lockState))?"EMPTY"!=i.id||1!=n[i.pos]&&"A"==i.status||i.pos==o.pos&&"A"!=i.status?"EMPTY"==i.id&&"A"==i.status?($(e).hide(),r.deactivateTarget(e)):r.activateTarget(e):($(e).show(),r.activateTarget(e)):r.deactivateTarget(e):"EMPTY"==i.id&&i.pos!=o.pos&&o.elig&&o.elig.posEligHash[i.pos]&&(1==n[i.pos]||"A"!=i.status)||!r.maxBench&&"A"==i.status&&i.pos!=o.pos&&"EMPTY"!=i.id&&i.elig&&i.elig.posEligHash[o.pos]||r.maxBench&&"A"==i.status&&i.pos!=o.pos&&"EMPTY"!=i.id?(r.activateTarget(e),$(e).show()):"A"!=i.status&&i.elig&&i.elig.posEligHash[o.pos]?r.activateTarget(e):("EMPTY"==i.id&&"A"==i.status&&$(e).hide(),r.deactivateTarget(e)))})},completePlayerMove:function(t){"EMPTY"!=t.id?this.moveToFilled(this.sourceSpot,this.targetSpot):"A"==t.status?this.moveToEmptyA(this.sourceSpot,this.targetSpot):this.moveToEmpty(this.sourceSpot,void 0,void 0,t.status,void 0,t.group),this.resetSpots()},deleteChange:function(t,e,s){for(var i,a=this.trackMoves,o=0,r=a.length;o<r;o++)((i=a[o])&&i.source==t&&i.target==e||i&&i.source==e&&i.target==t)&&delete this.trackMoves[o]},swapPositions:function(t,e,s,i,a,o){var r,n=this.rosterMap.slot[t],l=$("#"+t).children(":nth-child(2)");n.pos=a,r=(r=l.html()).split(/\s/),l.html(r[0]+' (<a href="#" class="changePos">'+n.pos+"</a>)"),this.setChanged(t),s||(this.trackMoves[this.moveCount++]={method:"swapPositions",source:t,target:e,targetStatus:i,targetPos:a,targetGroup:o}),this.resetSpots(),$("#posDialog").hide()},swapSpots:function(t,e,s,i,a,o){var r=this.rosterMap.slot[t],n=this.rosterMap.slot[e],l=r.id,r=$.extend(!0,{},r),n=$.extend(!0,{},n);this.rosterMap.slot[e].elig=r.elig,this.rosterMap.slot[e].eligCats=r.eligCats,this.rosterMap.slot[e].id=r.id,"A"!=this.rosterMap.slot[e].status&&(this.rosterMap.ohtaniRS&&this.rosterMap.ohtaniRS[this.rosterMap.slot[t].id]&&this.rosterMap.ohtaniRS[this.rosterMap.slot[t].id][this.rosterMap.slot[e].group]?this.rosterMap.slot[e].pos=this.rosterMap.slot[this.rosterMap.ohtaniRS[this.rosterMap.slot[t].id][this.rosterMap.slot[e].group]].pos:this.rosterMap.slot[e].pos=r.pos),this.setChanged(e),this.rosterMap.slot[e].elig&&this.rosterMap.slot[e].elig.keeper&&$("#"+e+" input[type=checkbox]").attr("checked",!0),this.rosterMap.slot[t].elig=n.elig,this.rosterMap.slot[t].eligCats=n.eligCats,this.rosterMap.slot[t].id=n.id,a&&(this.rosterMap.slot[t].pos=a),this.setChanged(t),this.rosterMap.slot[t].elig&&this.rosterMap.slot[t].elig.keeper&&$("#"+t+" input[type=checkbox]").attr("checked",!0),this.trackMoves[this.moveCount++]={method:s,source:t,target:e,targetStatus:i,targetPos:a,targetGroup:o,sourcePlayerId:l}},moveToEmptyA:function(t,e,s,i,a,o,r){var n=$("#"+t),l=($("#"+e),this.rosterMap.slot[t]);this.rosterMap.slot[e];this.moveToFilled(t,e,s,"moveToEmptyA",void 0,void 0,void 0,r),l&&"A"!=l.status&&(delete this.rosterMap.slot[t].changed,this.rosterMap.slot[t].elig=void 0,this.rosterMap.slot[t].id="EMPTY",this.rosterMap.slot[t].eligCats=void 0,this.rosterMap.slot[t].pos="RSHIDDEN",n.hide())},moveToEmpty:function(t,e,s,a,o,r,n){var l,c,h,d=!1,p={},u=$("#"+t),g=u.clone(),v=this.rosterMap.slot[t],m=r?$("#"+this.rosterMap["empty"+a][r]):$("#"+this.rosterMap["empty"+a][v.group]),b=m.clone(),f=this.rosterMap.slot[m.attr("id")];if($.extend(!0,p,f),p.slot=e?this.rosterMap.slot[e].slot:this.rosterMap.rowIndex+++"",l=p.group+"_Row_"+p.slot,this.rosterMap.slot[l]=e?this.rosterMap.slot[e]:p,h=(s?this.rosterMap.slot[l]:v).pos,!r||v.group==r||this.rosterMap.ohtaniRS&&this.rosterMap.ohtaniRS[this.rosterMap.slot[t].id]||(d=!0),f="EMPTY"==this.rosterMap.slot[t].id?this.rosterMap.slot[t].origId:this.rosterMap.slot[t].id,e=this.rosterMap.slot[l].id,r&&v.group!=r&&(this.rosterMap.ohtaniRS&&this.rosterMap.ohtaniRS[f]&&this.rosterMap.ohtaniRS[f][r]||this.rosterMap.ohtaniRS&&this.rosterMap.ohtaniRS[e]&&this.rosterMap.ohtaniRS[e][r])&&(p=(this.rosterMap.ohtaniRS[f]||this.rosterMap.ohtaniRS[e])[r],f=$("#"+p),c=u.clone(),g=f.clone(),h=this.rosterMap.slot[p].pos),$('<tr class="row2 playerRow" id="'+l+'"></tr>').insertAfter(m),g.children().each(function(t,e){var s;t<2?(s=$(b.children()[t]).clone(),1==t&&(t=s.html(),s.html(t+' (<a href="#" class="changePos">'+h+"</a>)")),$("#"+l).append(s)):$("#"+l).append($(e))}),b.children().each(function(t,e){1<t?$(u.children()[t]).html($(e).html()):1==t&&d&&"A"!=v.status&&$(u.children()[t]).html("BENCH")}),c&&b.children().length<c.children().length)for(i=b.children().length;i<c.children().length;i++)$(u.children()[i]).html("0");s||(this.swapSpots(t,l,"moveToEmpty",a,o,r),r&&v.group!=r&&"A"!=v.status&&(delete this.rosterMap.slot[t].changed,this.rosterMap.slot[t].elig=void 0,this.rosterMap.slot[t].eligCats=void 0,this.rosterMap.slot[t].id="EMPTY",this.rosterMap.slot[t].pos="RSHIDDEN",u.hide()))},moveToFilled:function(t,e,s,a,o,r,n,l){var c,h,d,p,u,g=$("#"+t),v=$("#"+e),m=this.rosterMap.slot[t],b=this.rosterMap.slot[e],f=g.clone(),M=v.clone();if(null==l&&(this.rosterMap.ohtaniRS&&this.rosterMap.ohtaniRS[this.rosterMap.slot[t].id]?l=this.rosterMap.slot[t].id:this.rosterMap.ohtaniRS&&this.rosterMap.ohtaniRS[this.rosterMap.slot[t].origId]&&(l=this.rosterMap.slot[t].origId)),"moveToEmptyA"!=a&&this.rosterMap.slot[t].group!=this.rosterMap.slot[e].group&&this.rosterMap.ohtaniRS&&this.rosterMap.ohtaniRS[l])this.moveToEmpty(e,void 0,void 0,"RS",b.pos),this.moveToEmptyA(t,e),this.rosterMap.slot[e].group;else{for(this.rosterMap.slot[t].group!=this.rosterMap.slot[e].group&&this.rosterMap.ohtaniRS&&this.rosterMap.ohtaniRS[l]&&(hiddenRowSource=this.rosterMap.ohtaniRS[l][this.rosterMap.slot[e].group],l=$("#"+hiddenRowSource),u=g.clone(),f=l.clone()),a=a||"moveToFilled","A"!=b.status&&(c=(c=$(v.children()[1]).html()).split(/\s/),$(v.children()[1]).html(c[0]+' (<a href="#" class="changePos">'+m.pos+"</a>)")),"A"!=m.status&&(c=(c=$(g.children()[1]).html()).split(/\s/),p=b.pos,$(g.children()[1]).html(c[0]+' (<a href="#" class="changePos">'+b.pos+"</a>)")),i=2,len=f.children().length;i<len;i++)$(g.children()[i]).html($(M.children()[i]).html()),$(v.children()[i]).html($(f.children()[i]).html());if(u&&u.children().length>f.children().length)for(i=f.children().length;i<u.children().length;i++)$(g.children()[i]).html("0");s||(b.elig&&!b.elig.posEligHash[m.pos]||"A"!=m.status&&b.elig&&!b.elig.posEligHash[m.status]||"A"==m.status&&"A"==b.status&&"EMPTY"!=b.id&&this.commishMode&&"Pos"==this.commishAction?(d=m.pos,p=b.pos):"A"!=b.status&&m.elig&&!m.elig.posEligHash[b.status]&&(h=m.pos),this.swapSpots(t,e,a,void 0,p,b.group),d?this.moveToEmpty(t,void 0,void 0,"RS",d,b.group):h&&this.moveToEmpty(e,void 0,void 0,"RS",b.pos))}},activateButton:function(){$("input.setLineup[type=submit]").removeClass("disabled")},deactivateButton:function(){$("input.setLineup[type=submit]").addClass("disabled")},deactivateTarget:function(t){$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").hide(),$(t).is(":data(droppable)")&&$(t).droppable("disable")},activateSource:function(t){$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").removeClass("moveSource"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").addClass("moveCancel"),$(t).removeClass("row1"),$(t).removeClass("row2"),$(t).removeClass("changedRow"),$(t).addClass("sourceRow")},activateTarget:function(t){var e=this.rosterMap.slot[t.id].lockState,e=!this.commishMode||this.mine&&!e&&"Pos"!=this.commishAction?"editButton":"editButtonCommish";$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").removeClass("moveSource"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").removeClass(e+"Lg"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").addClass("moveTarget"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").addClass("editButtonActiveLg"),$(t).removeClass("row1"),$(t).removeClass("row2"),$(t).removeClass("changedRow"),$(t).addClass("targetRow"),$(t).is(":data(droppable)")&&$(t).droppable("enable"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").show()},resetTarget:function(t){var e=this.rosterMap.slot[t.id].lockState,e=!this.commishMode||this.mine&&!e&&"Pos"!=this.commishAction?"editButton":"editButtonCommish";$(t).is(":data(droppable)")&&$(t).droppable("disable"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").removeClass("moveTarget"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").removeClass("editButtonActiveLg"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").addClass("moveSource"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").addClass(e+"Lg"),$(t).removeClass("targetRow")},resetSource:function(t){$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").removeClass("moveCancel"),$(t).children(".editCell").children(".actionButtonLg, .actionButtonSm").addClass("moveSource"),$(t).removeClass("sourceRow")},resetSpots:function(t){var e,s,o=this,r=0,i="",n={};$(".playerRow").filter(":not(.spacer)").each(function(t,e){var s=$(e).attr("id");if(!s)return!0;var i,a=o.rosterMap.slot[s];void 0!==s&&void 0!==a&&(i=Number(a.lockState),0<a.sponsorOptimize&&$(e).children(".playerPosition").addClass("sponsorOptimize"),o.rosterMap.slot[s]&&o.rosterMap.slot[s].changed&&r++,$(e).children(".editCell").children(".actionButtonLg, .actionButtonSm").hasClass("moveTarget")&&o.resetTarget(e),$(e).children(".editCell").children(".actionButtonLg, .actionButtonSm").hasClass("moveCancel")&&o.resetSource(e),$(e).removeClass("row1"),$(e).removeClass("row2"),$(e).removeClass("ui-droppable-disabled"),$(e).removeClass("ui-state-disabled"),$(e).removeClass("changedRow"),"A"==a.status&&(void 0===n[a.pos]&&(n[a.pos]=0),n[a.pos]++),a.changed?$(e).addClass("changedRow"):"A"==a.status?$(e).addClass("row1"):$(e).addClass("row2"),"EMPTY"==a.id&&"A"==a.status&&1==n[a.pos]?($(e).show(),$(e).children(".editCell").children(".actionButtonLg, .actionButtonSm").hide()):"EMPTY"==a.id&&("A"!=a.status||"A"==a.status&&1<n[a.pos])?$(e).hide():"EMPTY"==a.id?$(e).children(".editCell").children(".actionButtonLg, .actionButtonSm").hide():o.commishMode?$(e).children(".editCell").children(".actionButtonLg, .actionButtonSm").show():o.mine&&"EMPTY"!=a.id&&("EMPTY"==a.origId&&"EMPTY"!=a.id&&$(e).show(),i&&!o.commishMode||$(e).children(".editCell").children(".actionButtonLg, .actionButtonSm").show()))}),"undefined"!=typeof is_roster_legal?(s=(e=is_roster_legal()).error,e=e.warnings,""!=s&&0==setLineupWarnings.length&&setLineupWarnings.push(s),""!=e&&setLineupWarnings.unshift(e),0<setLineupWarnings.length&&(i=setLineupWarnings.join("<br>")),$("#warn_text").html(i),i||"undefined"!=typeof is_advanced_lineup&&is_advanced_lineup?($("#lineupErrors").show(),$("#roster_warning").show()):($("#lineupErrors").hide(),$("#roster_warning").hide()),setLineupWarnings=[]):"undefined"!=typeof is_advanced_lineup&&(is_advanced_lineup?($("#lineupErrors").show(),$("#roster_warning").show()):($("#lineupErrors").hide(),$("#roster_warning").hide())),this.commishMode&&this.showCommishCancel(this.commishAction,$(".commishSm."+this.commishAction).position()),0<r?this.activateButton():this.deactivateButton(),this.numChanges=r},setChanged:function(t){this.rosterMap.slot[t].origId!=this.rosterMap.slot[t].id||this.rosterMap.slot[t].elig&&this.rosterMap.slot[t].elig.keeper!=this.rosterMap.player[this.rosterMap.slot[t].id].origKeeper&&(this.rosterMap.slot[t].elig.keeper&&0==this.rosterMap.slot[t].elig.origKeeper||!this.rosterMap.slot[t].elig.keeper&&1==this.rosterMap.slot[t].elig.origKeeper)||this.rosterMap.slot[t].elig&&this.rosterMap.slot[t].elig.currPos!=this.rosterMap.slot[t].pos?this.rosterMap.slot[t].changed=!0:delete this.rosterMap.slot[t].changed},setKeeper:function(t,e,s){var i,a=$(t).parent().parent().attr("id");this.rosterMap.slot[a].elig&&(e=!!$(t).is(":checked")||null,this.rosterMap.slot[a].elig.keeper=e,this.trackKeeperMoves[this.moveKeeperCount++]={checkboxName:$(t).attr("name"),value:e},this.setChanged(a),this.resetSpots()),0<this.maxKeepers?(i=0,$("form").find("input[type=checkbox]").each(function(t,e){!$(e).hasClass("selectAllKeepersCheckbox")&&$(e).is(":checked")&&$(e).is(":visible")&&i++}),i>this.maxKeepers?lineupBuilder.deactivateButton():lineupBuilder.activateButton(),$("input[type=checkbox]:not(.selectAllKeepersCheckbox)").click(function(t){var s=0,i=-2;$(this).closest("table").find("input[type=checkbox]").each(function(t,e){i++,!$(e).hasClass("selectAllKeepersCheckbox")&&$(e).is(":checked")&&s++}),s==i?$(this).closest("table").find(".selectAllKeepersCheckbox").prop("checked",!0):$(this).closest("table").find(".selectAllKeepersCheckbox").prop("checked",!1)})):lineupBuilder.deactivateButton()},showSwapPositions:function(t,e){var s,i,a,o=this,r=[],t=$(t).position(),n=parseInt(t.left),t=parseInt(t.top)+20,l=$("#posDialog"),c=this.rosterMap.slot[e];if(c&&c.elig&&c.elig.posEligArray){for(l[0]||((l=$('<div id="posDialog" style="text-align:center;"></div>').appendTo("#rosterReportContainer")).mouseover(function(t){o.disablePosDialogHide=!0}),l.mouseout(function(t){o.disablePosDialogHide=!1}),$("a.changePos").unbind("blur").bind("blur",function(t){o.disablePosDialogHide||$("#posDialog").hide()})),l.css("top",t+"px"),l.css("left",n+"px"),i=0,a=(s=c.elig.posEligArray).length;i<a;i++)s[i]!=c.pos?r.push('<a href="#" class="fantasyOptions posToSwapTo" onclick="lineupBuilder.swapPositions(\''+e+"', '','','', '"+s[i]+"');return false;\">"+s[i]+"</a>"):r.push('<a href="#" class="active fantasyOptions posToSwapTo" onclick="return false;">'+s[i]+"</a>");l.html("<div class='padVertical10 padHorizontal10'>Select position to<br/>move this player to.</div><div class='padHorizontal10'>"+r.join(" ")+"</div><div class='padVertical10 padHorizontal10'><button class=\"fantasyButtonSm\" onclick=\"$('#posDialog').hide();return false;\">Cancel</button></div>"),l.show()}},showCommishCancel:function(t,e){var s=$("#commishCancel"),i=parseInt(e.left)-37,e=parseInt(e.top)+1;s[0]||($('<div id="commishCancel" class="spacerVertical10" action="action"><a class="fantasyButtonLg" onclick="lineupBuilder.hideCommishCancel(\''+t+"');\">Cancel</a></div>").insertAfter(".commishSm."+t),s=$("#commishCancel")),s.css("top",e+"px"),s.css("left",i+"px"),s.show()},hideCommishCancel:function(t){$("#commishCancel").hide(),href=$(".rosterReportReload").attr("href").split("?"),$(".rosterReportReload").attr("href",href[0]),$(".rosterReportReload").trigger("click")},showCommishContracts:function(t){contractsDialog=$("#contractsDialog"),s=$("#contractsCancel"),lineupTable=$("#lineup_views"),buttonLeft=parseInt(t.left)-10,buttonTop=parseInt(t.top)+80,e=parseInt(t.top)+110,parseInt(t.left),contractsDialog[0]||($("<div id='contractsDialog' style='width:350px;'></div>").appendTo("#rosterReportContainer"),(contractsDialog=$("#contractsDialog")).show()),s[0]||(console.log($("#contractsDialog").length),s=$('<div id="contractsCancel" action="action"><button class="fantasyButtonLg" onclick="lineupBuilder.hideCommishContracts();">Cancel</button></div>')),contractsDialog.css("top",e+"px");var e,s,t="/setup/commish-tools/wildcards-include?ajax=1&team="+$("input[name=team]").val()+"&point="+$("input[name=point]").val();console.log("*************************** tttt ************************"),console.log(t),$.ajax({type:"GET",url:"/setup/commish-tools/wildcards-include?ajax=1&team="+$("input[name=team]").val()+"&point="+$("input[name=point]").val(),dataType:"html",success:function(t){contractsDialog.html(t).append(s),$("form[name=edit_wildcard]").unbind().bind("submit",function(t){t.preventDefault();t=$(this).serialize();t+="&point="+$("input[name=point]").val()+"&team="+$("input[name=team]").val(),contractsDialog.html("<div style='line-height:300px;height:300px;text-align:center;'><img src='"+CBSi.imageServer+"/images/fantasy/contacts/loader.gif' style='padding-top:130px;'>"),$.ajax({type:"POST",url:"/setup/commish-tools/wildcards-include",data:t,success:function(t){contractsDialog.hide(),s.hide(),$(".rosterReportReload").trigger("click")}})})}})},hideCommishContracts:function(){$("#contractsDialog").remove()},changeHandler:function(t,e){set_lineup(),t.value==e?(Dom.setStyle(t,"background",this.notChangedColor),delete this.colState[t.id]):(Dom.setStyle(t,"background",this.changedColor),this.colState[t.id]=t.value)},buildNav:function(){this.navDiv.innerHTML=this.navView.nav,this.navView.asstGM.issue_ct?$("#asstGMAlert").text(this.navView.asstGM.issue_ct):$("#asstGMAlert").hide()},buildLineup:function(){this.content=this.currentView,this.populateDiv(),this.setMoveState(),this.progressIndicator=document.getElementById(this.progressIndicatorName),"asst_gm"==this.currentView.secNav?(this.navView.asstGM&&($.get("/data/lineup/save-asst-gm-timestamp/"),$("#asstGMAlert").hide()),this.toggleToolbarBtns("hide"),$("#manageAsstGMSpan").show(),$(".asstGMIcon").unbind("click").click(function(t){$(this).toggleClass("ui-icon-circle-plus"),$(this).toggleClass("ui-icon-circle-minus"),$(this).prev().children().last().animate({height:"toggle",opacity:"toggle"},"fast")})):"def_opp_vs_pos"==this.currentView.priNav?(this.firstCol=0,this.lastCol=0,$(".ltArrow").unbind("click").click(function(t){var e=$(this).parent()[0].className.replace(/statCol/g,"");LB._scrollList(e,"back"),t.preventDefault()}),$(".rtArrow").unbind("click").click(function(t){var e=$(this).parent()[0].className.replace(/statCol/g,"");LB._scrollList(e,"forward"),t.preventDefault()})):(this.toggleToolbarBtns("show"),$("#manageAsstGMSpan").hide())},setMoveState:function(){for(var t,e,s=0,i=this.trackMoves.length;s<i;s++)(t=this.trackMoves[s])&&this[t.method](t.source,t.target,1,t.targetStatus,t.targetPos,t.targetGroup,t.sourcePlayerId);for(s=0,i=this.trackKeeperMoves.length;s<i;s++)(t=this.trackKeeperMoves[s])&&(e=$("input[name="+t.checkboxName+"]").parent().parent().attr("id"),$("#"+e+" input[type=checkbox]").attr("checked",t.value),this.rosterMap.slot[e].elig.keeper=t.value,this.setChanged(e));this.resetSpots(this.commishMode)},setStateBackground:function(){for(var t in this.colState)Dom.setStyle(t,"background",this.changedColor)},clearLineup:function(){this.content="",this.populateDiv()},populateDiv:function(){$(this.contentDiv).html(this.content)},showProgress:function(){this.progressIndicator&&(this.progressIndicator.style.visibility="visible")},hideProgress:function(t,e,s,i){t&&this[t](e,s,i),this.progressIndicator&&(this.progressIndicator.style.visibility="hidden");try{googletag.pubads().refresh([adSlots.XFP_leader_top,adSlots.XFP_leader_plus2_bottom])}catch(t){}},switchPriNav:function(t,e){$("div.fantasyHeaderNav ul li").removeClass("active"),$("div.fantasyHeaderNav ul li").removeClass("afterActive"),$("div.fantasyHeaderNav ul li."+t).addClass("active"),$("div.fantasyHeaderNav ul li."+t).next().addClass("afterActive")},showWdis:function(t){var e=this.navView,s=this.viewCache,t=this._getNewPage(t);this.showProgress(),$("#lineup_views").hide(),this.toggleToolbarBtns("hide"),this.hideAllWdisTabs(),s[e.secNav]||(s[e.secNav]=this.currentView),"welcome"==t.secNav&&e.lastState[t.priNav]&&(t.secNav=e.lastState[t.priNav]),$("#wdisContainer").show(),$("#"+t.secNav).trigger("show"),this.hideProgress(t.switchNav,t.priNav,t.secNav),e.priNav=t.priNav,e.secNav=t.secNav,e.lastState[e.priNav]=t.secNav,$.get("/data/lineup/save-nav-state/"+t.priNav+"/"+t.secNav),this.currentView={}},hideAllWdisTabs:function(){$.each($("#wdisContainer").children(),function(t,e){e.id&&$("#"+e.id).hide()})},hideWdis:function(t){$("#wdisContainer").hide(),$("#lineup_views").show(),this.toggleToolbarBtns("show")},toggleToolbarBtns:function(t){$(".setLineupButton")[t](),$("#btn-add")[t](),$("#btn-print")[t](),$("#btn-ssheet")[t](),$("#btn-send")[t]()},loadView:function(t,e){var s,i,a,o,r,n,l=this,c=this.navView,h=this.viewCache,d=this.queryParams,p=(c.priNav,$("#lineup_views"));if(this.showProgress(),this.hideWdis(),this.hideCommishContracts(),e&&(d&&(d+="&"),d=d+"source_id="+e),(s=this._getNewPage(t,e)).newPage){for(currentCacheKey=[c.secNav,c.source].join("_"),newCacheKey=[s.secNav,s.source].join("_"),i=[Dom.get("btn-print"),Dom.get("btn-ssheet"),Dom.get("btn-send")],a=new RegExp(c.secNav),r=0,n=i.length;r<n;r++)(o=i[r])&&(o.href=o.href.replace(a,s.secNav));if(h[currentCacheKey]||(h[currentCacheKey]=this.currentView),p.fadeTo(200,.1),h[newCacheKey])this.currentView=h[newCacheKey],this.clearLineup(),this.buildLineup(),this.hideProgress(s.switchNav,s.priNav,s.secNav),setTimeout(function(){$("table.pinHeader thead").parent().stickyTableHeaders({fixedOffset:$("#fantNavContainer").height()}),$(".tooltip").tooltip(),p.fadeTo(200,1)},500);else{t=this.basePath+"/"+s.priNav+"/"+s.secNav+"/"+c.action+"?"+d,$.ajax({type:"GET",url:t,success:{success:function(t){l.currentView=t,l.clearLineup(),l.buildLineup(),l.hideProgress(s.switchNav,s.priNav,s.secNav),$("table.pinHeader thead").parent().stickyTableHeaders({fixedOffset:$("#fantNavContainer").height()}),$(".tooltip").tooltip(),p.fadeTo(200,1)}}.success,error:function(t){},dataType:"html"});try{refreshBids()}catch(t){}}c.priNav=s.priNav,c.secNav=s.secNav}else this.hideProgress()},asstGMSettings:function(){$.ajax({type:"GET",url:"/data/lineup/asst-gm-settings",context:this,success:this.loadAsstGMSettings,dataType:"json"})},loadAsstGMSettings:function(s){var t=this;this.asstGMSettingsPanel(),this.asstGMPanel.setBody(this.asstGMPanelBody(s.msg)),$("#asstGMForm").unbind("submit").submit(function(){return $.ajax({type:"GET",url:"/data/lineup/asst-gm-settings/save?"+$(this).serialize(),context:t,success:t.loadAsstGMSettings,dataType:"json"}),!1}),$("#asstGMForm :checkbox, #asstGMForm :submit").unbind("click").click(function(){$(".asstGMFormMsg").html("")}),s.settings&&$.each($("#asstGMForm :checkbox"),function(t,e){1==Number(s.settings[e.name])&&(e.checked=!0,"disable_asst_gm"==e.name)&&$("#asstGMAlert").hide()}),this.asstGMPanel.focus(!0),this.asstGMPanel.center(),this.asstGMPanel.show()},asstGMSettingsPanel:function(){var t=$("#asstGMPanelCont");t.length||((t=document.createElement("div")).id="asstGMPanelCont",t.className="yui-skin-spln",document.body.appendChild(t)),CBSi.panel.overlayManager&&(this.asstGMPanel=CBSi.panel.overlayManager.find("asstGMPanel")),this.asstGMPanel||(this.asstGMPanel=CBSi.panel.create("asstGMPanel",{width:"300px",height:"240px",underlay:"shadow",visible:!1,draggable:!0,close:!0,constraintoviewport:!0,effect:{effect:YAHOO.widget.ContainerEffect.FADE,duration:.25}}),this.asstGMPanel.setHeader("Assistant GM Settings"),this.asstGMPanel.setBody(""),this.asstGMPanel.render(t))},asstGMPanelBody:function(t){var e=[];return e.push("<div id='asstGMFormPanel'><form id='asstGMForm'>"),e.push("<div class='asstGMFormMsg'>"+t+"</div>"),e.push("<div class='asstGMFormHeading'>Global Settings:</div>"),e.push("<div class='asstGMFormField'><input type='checkbox' name='disable_asst_gm' value='1'>&nbsp;Disable Assistant GM alerts for my team</div>"),e.push("<div class='asstGMFormHeading'>Assistant GM Suggestion Types:</div>"),e.push("<div class='asstGMFormField'><input type='checkbox' value='1' name='bench'>&nbsp;Hide Lineup Suggestions</div>"),e.push("<div class='asstGMFormField'><input type='checkbox' value='1' name='drop'>&nbsp;Hide Free Agent Suggestions</div>"),e.push("<div class='asstGMFormField'><input type='checkbox' value='1' name='trade'>&nbsp;Hide Trade Suggestions</div>"),e.push("<div class='asstGMFormSubmit'><input type='submit' value='Save'></div></form></div>"),e.join("")},_updateQueryStringParameter:function(t,e,s){var i=new RegExp("([?&])"+e+"=.*?(&|$)","i"),a=-1!==t.indexOf("?")?"&":"?";return t.match(i)?t.replace(i,"$1"+e+"="+s+"$2"):t+a+e+"="+s},_getQueryString:function(t,e){t=new RegExp("[?&]"+t+"=([^&#]*)","i").exec(e);return t?t[1]:null},_getNewPage:function(t,e){var s,i,a,o,r=this.navView,n=0,l=r.priNav,c=r.secNav,h=r.source;return t.match(/^pri_/)?(i=t.replace(/^pri_/,""),r.priNav!=i&&(c=l=i,n=1,s="switchPriNav",$(".gamblingAccreditation").hide(),(i.match(/^odds/)||i.match(/^overview/)&&"1"==this.showGamblingAccr)&&($(".gamblingAccreditation").show(),i.match(/^odds/)?$(".gamblingAccreditation").css("border-right","none"):$(".gamblingAccreditation").css("border-right","2px solid #94A1A9")),$(".accreditation.accrNavBar").hide(),(i.match(/^projections/)||i.match(/^overview/)&&"1"==this.showSportslineAccrOverview)&&$(".accreditation.accrNavBar").show(),null!=stb)&&(a=this._getQueryString("period",stb.btns.btnPrint),o=this._getQueryString("period",this.queryParams),null==a&&null!=o&&(stb.btns.btnPrint+="&period="+o,stb.btns.btnExport+="&period="+o),a=this._getQueryString("point",stb.btns.btnPrint),o=this._getQueryString("point",this.queryParams),null==a&&null!=o&&(stb.btns.btnPrint+="&point="+o,stb.btns.btnExport+="&point="+o),a=stb.btns.btnPrint,o=stb.btns.btnExport,stb.btns.btnPrint=this._updateQueryStringParameter(a,"secabbrev",""),stb.btns.btnExport=this._updateQueryStringParameter(o,"secabbrev",""),a=stb.btns.btnPrint,o=stb.btns.btnExport,$(".siteTools #btnPrint").show(),$(".siteTools #btnExport").show(),"overview"==l?(stb.btns.btnPrint=this._updateQueryStringParameter(a,"viewabbrev","overview"),stb.btns.btnExport=this._updateQueryStringParameter(o,"viewabbrev","overview")):l.match(/stats-/)?(stb.btns.btnPrint=this._updateQueryStringParameter(a,"viewabbrev",l),stb.btns.btnExport=this._updateQueryStringParameter(o,"viewabbrev",l)):"projections-season-CBS1028"==l?(stb.btns.btnPrint=this._updateQueryStringParameter(a,"viewabbrev","projections-season"),stb.btns.btnExport=this._updateQueryStringParameter(o,"viewabbrev","projections-season")):"sch"==l?(stb.btns.btnPrint=this._updateQueryStringParameter(a,"viewabbrev","sch"),stb.btns.btnExport=this._updateQueryStringParameter(o,"viewabbrev","sch")):l.match(/projections-/)?(stb.btns.btnPrint=this._updateQueryStringParameter(a,"viewabbrev","projections-restofseason"),stb.btns.btnExport=this._updateQueryStringParameter(o,"viewabbrev","projections-restofseason")):l.match(/records/)?(stb.btns.btnPrint=this._updateQueryStringParameter(a,"viewabbrev","records"),stb.btns.btnExport=this._updateQueryStringParameter(o,"viewabbrev","records")):l.match(/matchups-weekly-defvspos/)?(stb.btns.btnPrint=this._updateQueryStringParameter(a,"viewabbrev","matchups-weekly-defvspos"),stb.btns.btnExport=this._updateQueryStringParameter(o,"viewabbrev","matchups-weekly-defvspos")):"news"==l&&($(".siteTools #btnPrint").hide(),$(".siteTools #btnExport").hide()))):t.match(/^http/)?(i=(i=t.split("/"))[i.length-1],r.secNav!=i&&(c=i,n=1,s="switchPriNav",null!=stb)&&(a=stb.btns.btnPrint,o=stb.btns.btnExport,stb.btns.btnPrint=this._updateQueryStringParameter(a,"secabbrev",i),stb.btns.btnExport=this._updateQueryStringParameter(o,"secabbrev",i))):t.match(/^source_/)&&r.source!=e&&((i=t.replace(/^source_/,"")).match(/^projections/)&&(l=i+"-all",c=i+"-"+e),h=e,n=1),{priNav:l,secNav:c,source:h,newPage:n,switchNav:s}},_scrollList:function(t,e){var s,i,a,o=parseInt(this.maxCols/this.colLimit)+1;if(this.firstCol||(this.firstCol=1),this.lastCol||(this.lastCol=this.colLimit),"back"==e){for(1<this.currentPage&&this.currentPage--,s=(a=(i=this.currentPage*this.colLimit-this.colLimit+1)+this.colLimit-1)+1;s<=this.lastCol;s++)$(".statCol"+s).hide(),$(".statCol"+s+" .rtArrow").hide();for($(".statCol"+a+" .rtArrow").show(),$(".statCol"+this.firstCol+" .ltArrow").hide(),s=i;s<this.firstCol;s++)$(".statCol"+s).show()}else if("forward"==e){for(this.currentPage<o&&this.currentPage++,i=(a=t*this.currentPage>this.maxCols?this.maxCols:t*this.currentPage)-this.colLimit+1,s=this.firstCol;s<i;s++)$(".statCol"+s).hide(),$(".statCol"+s+" .ltArrow").hide();for($(".statCol"+i+" .ltArrow").show(),$(".statCol"+this.lastCol+" .rtArrow").hide(),s=this.lastCol+1;s<=a;s++)$(".statCol"+s).show()}this.firstCol=i,this.lastCol=a},_removeFantasyBalloonMessage:function(){0<$(".fantasyBalloonMessage").length&&$(".fantasyBalloonMessage").remove()},_confirmPlayerWarning:function(t){var e=$.Deferred();return $('<div id="lineupWarningDialogMessage">'+t+"</div>").appendTo("body").dialog({autoOpen:!0,buttons:[{class:"btn-default",text:"Cancel",click:function(){e.reject(),$(this).dialog("destroy")}},{class:"btn-primary",text:"OK",click:function(){e.resolve(),$(this).dialog("destroy")}}],closeText:"",dialogClass:"help-dialog",draggable:!1,height:"auto",maxWidth:420,minHeight:200,minWidth:400,modal:!0,position:["top",100],title:"Set Lineup Warnings",zIndex:9999999}),e.promise()}};CBSi.namespace("app.Lineup.AsstGM");(function(){CBSi.app.Lineup.AsstGM=function(){};CBSi.app.Lineup.AsstGM.prototype={init:function(){this.hideToolbarBtns();$("#manageAsstGMSpan").show();$(".asstGMIcon").unbind("click").click(function(a){$(this).toggleClass("ui-icon-circle-plus");$(this).toggleClass("ui-icon-circle-minus");$(this).prev().children().last().animate({height:"toggle",opacity:"toggle"},"fast")})},hideToolbarBtns:function(){$("#button-bar").hide()},asstGMSettings:function(){$.ajax({type:"GET",url:"/data/lineup/asst-gm-settings",context:this,success:this.loadAsstGMSettings,dataType:"json"})},loadAsstGMSettings:function(a){var b=this;this.asstGMSettingsPanel();this.asstGMPanel.setBody(this.asstGMPanelBody(a.msg));$("#asstGMForm").unbind("submit").submit(function(){$.ajax({type:"GET",url:"/data/lineup/asst-gm-settings/save?"+$(this).serialize(),context:b,success:b.loadAsstGMSettings,dataType:"json"});return false});$("#asstGMForm :checkbox, #asstGMForm :submit").unbind("click").click(function(){$(".asstGMFormMsg").html("")});if(a.settings){$.each($("#asstGMForm :checkbox"),function(c,d){if(Number(a.settings[d.name])==1){d.checked=true;if(d.name=="disable_asst_gm"){$("#asstGMAlert").hide()}}})}this.asstGMPanel.focus(true);this.asstGMPanel.center();this.asstGMPanel.show()},asstGMSettingsPanel:function(){var a=$("#asstGMPanelCont");if(!a.length){a=document.createElement("div");a.id="asstGMPanelCont";a.className="yui-skin-spln";document.body.appendChild(a)}if(CBSi.panel.overlayManager){this.asstGMPanel=CBSi.panel.overlayManager.find("asstGMPanel")}if(!this.asstGMPanel){this.asstGMPanel=CBSi.panel.create("asstGMPanel",{width:"300px",height:"240px",underlay:"shadow",visible:false,draggable:true,close:true,constraintoviewport:true,effect:{effect:YAHOO.widget.ContainerEffect.FADE,duration:0.25}});this.asstGMPanel.setHeader("Assistant GM Settings");this.asstGMPanel.setBody("");this.asstGMPanel.render(a)}},asstGMPanelBody:function(b){var a=[];a.push("<div id='asstGMFormPanel'><form id='asstGMForm'>");a.push("<div class='asstGMFormMsg'>"+b+"</div>");a.push("<div class='asstGMFormHeading'>Global Settings:</div>");a.push("<div class='asstGMFormField'><input type='checkbox' name='disable_asst_gm' value='1'>&nbsp;Disable Assistant GM alerts for my team</div>");a.push("<div class='asstGMFormHeading'>Assistant GM Suggestion Types:</div>");a.push("<div class='asstGMFormField'><input type='checkbox' value='1' name='bench'>&nbsp;Hide Lineup Suggestions</div>");a.push("<div class='asstGMFormField'><input type='checkbox' value='1' name='drop'>&nbsp;Hide Free Agent Suggestions</div>");a.push("<div class='asstGMFormField'><input type='checkbox' value='1' name='trade'>&nbsp;Hide Trade Suggestions</div>");a.push("<div class='asstGMFormSubmit'><input type='submit' value='Save'></div></form></div>");return a.join("")}}})();
+
+function updateQueryStringParameter (uri, key, value) {
+    var re = new RegExp("([?&])" + key + "=.*?(&|$)", "i");
+    if (uri.match(re)) {
+        return uri.replace(re, '$1' + key + "=" + value + '$2');
+    }
+    else {
+        var separator = uri.indexOf('?') !== -1 ? "&" : "?";
+        return uri + separator + key + "=" + value;
+    }
+}
+
+$(function(){
+    $(document).on( "click", "li a.fantasyOptions" , function(e) {
+            var link       = this,
+                tabContent = $('#rosterReportContainer');
+
+            tabContent.fadeTo( 200, 0.1 );
+            $.ajax({
+                url: this.href,
+                success: function(data) {
+                    tabContent.fadeTo( 200, 1 );
+                    tabContent.html( data );
+                },
+                dataType: "html"
+            });
+           
+            e.preventDefault();
+           
+            return false;
+        });
+    
+    $(".tooltip").tooltip();
+    FantasyComponentPlacer.move_array([ {name : 'filtersLevel1', clear : 1} ]);
+    var formHelper = new FormHelper();
+    $(".filters.primaryFilters .dropDown select").each(function(i, val) { 
+        formHelper._renderSelectBox($(val), undefined, { combineArrow: true, containerClass: "darkFilter" }); 
+    });
+});
+
+
+$(document).ready(function(){
+    $(" table#draftPicksRosterJS tr:not(.subtitle)").hide();
+    $(" table.futureDraftPicksRosterJS tr:not(.subtitle)").hide();
+
+    $("table#draftPicksRosterJS tr.subtitle").on('click', function(){
+        if($(this).find(".icon-chevron-down").length > 0){
+            $(this).find(".icon-chevron-down").removeClass("icon-chevron-down").addClass("icon-chevron-up");
+            $(" table#draftPicksRosterJS tr:not(.subtitle)").show();
+            } else {
+                $(this).find(".icon-chevron-up").removeClass("icon-chevron-up").addClass("icon-chevron-down");
+                 $(" table#draftPicksRosterJS tr:not(.subtitle)").hide();
+                }
+        });
+
+    $("table.futureDraftPicksRosterJS tr.subtitle").on('click', function(){
+        var tableId =  $(this).closest("table").attr('id');
+        if($(this).find(".icon-chevron-down").length > 0){
+            $(this).find(".icon-chevron-down").removeClass("icon-chevron-down").addClass("icon-chevron-up");
+            $(" table#"+tableId+" tr:not(.subtitle)").show();
+            } else {
+                $(this).find(".icon-chevron-up").removeClass("icon-chevron-up").addClass("icon-chevron-down");
+                $(" table#"+tableId+" tr:not(.subtitle)").hide();
+            }
+        });
+
+});
+</script>
+<span class="report_ yui-sam" id="rosterReportCont">
+        <div id="rosterReportLink" style="display:hidden;"><a class="rosterReportReload" href="/teams/roster-report/scout/1/?action=scout"></a></div><div id="lineup_periods"></div>
+             <form method=post action=/teams/set-lineup>
+             <div id="lineup_nav"><div class='fantasyHeaderNav'><ul class='' ><li class="overview active selected"><a href="#" om-action-name="fantasy roster interaction" id="pri_overview" onclick="javascript:lineupBuilder.loadView('pri_overview'); return false;" om-action="{&quot;clickText&quot;:&quot;Overview&quot;,&quot;moduleName&quot;:&quot;fantasy roster&quot;,&quot;moduleLocation&quot;:&quot;Overview&quot;,&quot;moduleAction&quot;:&quot;click&quot;}">Overview</a></li><li class="stats-ytd"><a href="#" om-action-name="fantasy roster interaction" id="pri_stats-ytd" onclick="javascript:lineupBuilder.loadView('pri_stats-ytd'); return false;" om-action="{&quot;clickText&quot;:&quot;Stats&quot;,&quot;moduleName&quot;:&quot;fantasy roster&quot;,&quot;moduleLocation&quot;:&quot;Stats&quot;,&quot;moduleAction&quot;:&quot;click&quot;}">Stats</a></li><li class="projections-season"><a href="#" om-action-name="fantasy roster interaction" id="pri_projections-season" onclick="javascript:lineupBuilder.loadView('pri_projections-season'); return false;" om-action="{&quot;clickText&quot;:&quot;Projections&quot;,&quot;moduleName&quot;:&quot;fantasy roster&quot;,&quot;moduleLocation&quot;:&quot;Projections&quot;,&quot;moduleAction&quot;:&quot;click&quot;}">Projections</a></li><li class="usage"><a href="#" om-action-name="fantasy roster interaction" id="pri_usage" onclick="javascript:lineupBuilder.loadView('pri_usage'); return false;" om-action="{&quot;clickText&quot;:&quot;Usage&quot;,&quot;moduleName&quot;:&quot;fantasy roster&quot;,&quot;moduleLocation&quot;:&quot;Usage&quot;,&quot;moduleAction&quot;:&quot;click&quot;}">Usage</a></li><li class="rankings"><a href="#" om-action-name="fantasy roster interaction" id="pri_rankings" onclick="javascript:lineupBuilder.loadView('pri_rankings'); return false;" om-action="{&quot;clickText&quot;:&quot;Rankings&quot;,&quot;moduleName&quot;:&quot;fantasy roster&quot;,&quot;moduleLocation&quot;:&quot;Rankings&quot;,&quot;moduleAction&quot;:&quot;click&quot;}">Rankings</a></li><li class="sch"><a href="#" om-action-name="fantasy roster interaction" id="pri_sch" onclick="javascript:lineupBuilder.loadView('pri_sch'); return false;" om-action="{&quot;clickText&quot;:&quot;Schedule&quot;,&quot;moduleName&quot;:&quot;fantasy roster&quot;,&quot;moduleLocation&quot;:&quot;Schedule&quot;,&quot;moduleAction&quot;:&quot;click&quot;}">Schedule</a></li><li class="news"><a href="#" om-action-name="fantasy roster interaction" id="pri_news" onclick="javascript:lineupBuilder.loadView('pri_news'); return false;" om-action="{&quot;clickText&quot;:&quot;News&quot;,&quot;moduleName&quot;:&quot;fantasy roster&quot;,&quot;moduleLocation&quot;:&quot;News&quot;,&quot;moduleAction&quot;:&quot;click&quot;}">News</a></li></ul>
+                <div class="fantasyHeaderNavExtras">
+                    <div class="gamblingAccreditation headerNavExtras-item">
+        <div  class="mBottomStd">
+            <a href="https://sports.betmgm.com/en/sports" target="_blank"><img src="https://sports.cbsimg.net/images/partner/betmgm/betmgm-logo-dark.svg"></a>
+        </div>
+        </div>
+                    <div class="fantasyHeaderNavExtras--wide">
+                        <div class="accreditation accrNavBar">
+                            <a class="accreditationLink" href="https://www.sportsline.com/?ttag=SL26_os_lk_FFB_roster" target="_blank">
+                                <div>Projections Powered <br> by <span class="sportslineName">SportsLine</span></div>
+                                <div class="sportsline-icon-full"></div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div><div id="set_lineup_button"><input type=hidden name=point value=1> <input type=hidden name=team value=scout>   </div></div>
+             
+             <div id="lineup_views"><table class="data data3 pinHeader borderTop" style="width:100%;">
+<thead>
+<tr class="title"><td colspan="14">Players <a dwTrackEvent="mgmt;gold;Section Help;teams/page/scout-team" href="#" onclick="if (CBSi && CBSi.widget && CBSi.widget.SectionHelp && typeof(CBSi.widget.SectionHelp.show == 'function' ) ) CBSi.widget.SectionHelp.show('teams/page/scout-team'); return false;" class="sectionHelp"><span class='learnMore'></span></a>
+               <a href="#" onclick="confirmLink('Are you sure that you want to drop all the scout players from your Scout Team?  This will not affect your team roster.', '/teams/delete-scout-team');" class="tooltip" title="Drop all the players from my Scout Team.">
+		    Drop All My Scout Players&nbsp;&nbsp;&nbsp;&nbsp;
+		</a></td></tr>
+<tr  class="label superheader"><th colspan="3"></th><th colspan="3"><div>Schedule</div></th><th colspan="1"><div>Odds</div></th><th colspan="2"><div>Rank</div></th><th colspan="2"><div>Trends</div></th><th colspan="3"><div>Fantasy Points</div></th></tr><tr  class="label"><th align="left">Action</th><th align="left"><span title="Position" class="tooltip">Pos</span></th><th align="left">Players</th><th align="left"><span title="Opponent" class="tooltip">Opp</span></th><th align="left">Game Time</th><th align="right"><span title="Bye Week" class="tooltip">Bye</span></th><th align="right"><span title="Over/Under is a way to bet on the total number of points scored in a game by both teams. A higher O/U could indicate that a player is likely to be in a higher scoring game." class="tooltip">O/U</span></th><th align="right"><span title="Positional Rank - Shows player's rank at his position" class="tooltip">PosRnk</span></th><th align="right"><span title="Opponent Rank Versus Position - Shows opponents' ranking against the position of the selected player's position (1 = toughest matchup, 32 = easiest matchup)" class="tooltip">Ovp</span></th><th align="right"><span title="Rostered Percentage" class="tooltip">Rost</span></th><th align="right"><span title="Start Percentage" class="tooltip">Start</span></th><th align="right">2025</th><th align="right"><span title="3-Year Average" class="tooltip">3yr Avg</span></th><th class="bold" align="right"><span title="Projected" class="tooltip">Proj</span></th></tr>
+</thead>
+<tr id="Offense_Row_0"  class="playerRow all" align="right" valign="top"><td align="left" class="editCell"><div class="ppactionbuttons"><a  href="/transactions/trade/3123469/20"  class="actionButtonSm tradePlayerSm " title="Offer Trade For This Player"></a>&nbsp;&nbsp;<a  href="#" id="scoutButton_3123469"  class="actionButtonSm removeScoutSm scoutButton " title="Drop From Scout Team" aria-label="Drop From Scout Team" onclick="CBSi.app.Player.ScoutTeam.toggle(this, 3123469, 1, 'Sm');return false;"></a></div></td><td align="left" class="playerPosition">RB</td><td align="left"><a class='playerLink' aria-label=' Breece Hall ' href='https://thefirstking.football.cbssports.com/players/playerpage/3123469'>Breece Hall</a> <span class='playerPositionAndTeam'>RB &#149; NYJ</span> <span class="playerIconsWrapper"><span title="Groin: Questionable for Week 1 at Tennessee"><a href="https://thefirstking.football.cbssports.com/players/playerpage/3123469" subtab="Injury Report" class="playerLink" aria-label="Injury Report: Groin: Questionable for Week 1 at Tennessee"><span class="icon-red_cross"></span></a></span></span></td><td align="left">@TEN</td><td align="left"><div><span id='player-3123469-next-game-datetime'>Sun  1:00pm ET</span><script>document.getElementById('player-3123469-next-game-datetime').textContent = formatTime('%a %l:%M%p %Z', 1789318800, true)</script></div></td><td align="right">13</td><td align="right">---</td><td align="right">17</td><td align="right">16</td><td align="right">95%</td><td align="right">66%</td><td align="right">207.66</td><td align="right">248.28</td><td align="right" class="bold">220.00</td></tr>
+<tr id="Defense_Row_1"  class="playerRow all" align="right" valign="top"><td align="left" class="editCell"><div class="ppactionbuttons"><a  href="/transactions/trade/1909/14"  class="actionButtonSm tradePlayerSm " title="Offer Trade For This Player"></a>&nbsp;&nbsp;<a  href="#" id="scoutButton_1909"  class="actionButtonSm removeScoutSm scoutButton " title="Drop From Scout Team" aria-label="Drop From Scout Team" onclick="CBSi.app.Player.ScoutTeam.toggle(this, 1909, 1, 'Sm');return false;"></a></div></td><td align="left" class="playerPosition">DST</td><td align="left"><a class='playerLink' aria-label=' Broncos ' href='https://thefirstking.football.cbssports.com/players/playerpage/1909'>Broncos</a> <span class='playerPositionAndTeam'>DST &#149; DEN</span> </td><td align="left">@KC</td><td align="left"><div><span id='player-1909-next-game-datetime'>Mon  8:15pm ET</span><script>document.getElementById('player-1909-next-game-datetime').textContent = formatTime('%a %l:%M%p %Z', 1789431300, true)</script></div></td><td align="right">10</td><td align="right">---</td><td align="right">2</td><td align="right">14</td><td align="right">100%</td><td align="right">88%</td><td align="right">196.00</td><td align="right">165.00</td><td align="right" class="bold">242.40</td></tr>
+<tr id="Defense_Row_2"  class="playerRow all" align="right" valign="top"><td align="left" class="editCell"><div class="ppactionbuttons"><a id="addButton_1929"  href="/stats/stats-main?default_add=DST:1929"  class="actionButtonSm addPlayerSm " title="Pick Up This Player" aria-label="Pick Up This Player" ></a>&nbsp;&nbsp;<a  href="#" id="scoutButton_1929" class="actionButtonSm removeScoutSm scoutButton " title="Drop From Scout Team" aria-label="Drop From Scout Team" onclick="CBSi.app.Player.ScoutTeam.toggle(this, 1929, 1, 'Sm');return false;"></a></div></td><td align="left" class="playerPosition">DST</td><td align="left"><a class='playerLink' aria-label=' Commanders ' href='https://thefirstking.football.cbssports.com/players/playerpage/1929'>Commanders</a> <span class='playerPositionAndTeam'>DST &#149; WAS</span> </td><td align="left">@PHI</td><td align="left"><div><span id='player-1929-next-game-datetime'>Sun  4:25pm ET</span><script>document.getElementById('player-1929-next-game-datetime').textContent = formatTime('%a %l:%M%p %Z', 1789331100, true)</script></div></td><td align="right">7</td><td align="right">---</td><td align="right">27</td><td align="right"><span style="color: #d8383a;">6</span></td><td align="right">32%</td><td align="right">18%</td><td align="right">102.00</td><td align="right">94.00</td><td align="right" class="bold">121.00</td></tr>
+</table></div>
+        <div id="scout_view" style="background-color: #FEFEFE;"><script type="text/javascript">
+CBSi.namespace("widget.PlayerAutoComplete");(function(){var a;CBSi.widget.PlayerAutoComplete=function(d,f){var b=f,c=this;var e=d.requestURL||"/data/player/search";$("#"+d.inputTagId).autocomplete({open:function(g,i){var h=$("ul.ui-autocomplete");h.css("z-index",6000001)},source:d.source||function(h,g){$.getJSON(e,{as:"json",league_abbr:d.leagueAbbr,site:d.site||"fantasynews",arena_val:d.arena||"mlb",last_name:h.term,limit:d.limit||10,free_agents_only:d.freeAgentsOnly||1},g)},minLength:d.intialQueryLength||1,select:function(g,h){if(!h.item){$(this).val("");return false}else{if(d.callback){d.callback(h.item)}else{if(d.getTargetUrl){window.location=d.getTargetUrl(h.item)}else{window.location=c.getTargetUrl(h.item)}}}}}).data("autocomplete")._renderItem=d.formatResult};CBSi.widget.PlayerAutoComplete.prototype.getTargetUrl=function(b){return b.url}})();
+$(document).ready( function() {
+    var addDropAutoComplete, autoCompleteInfo;
+    autoCompleteInfo = {
+        requestURL : "/api/players/search",
+        inputTagId : "scoutSearchInput",
+        divTagId   : "scoutSearchResults",
+        limit      : 20,
+        callback   : addPlayer,
+        formatResult : function ( ul, item ) {
+            ul.addClass('scoutTeamAutoComplete');
+            var freeAgentLabel = ( item.in_player_pool == 0 ) ? 'Not in Player Pool' :  item.free_agent ? 'Available' : 'Not Available';
+            return $( "<li onclick='addPlayer({id : \""+item.id+"\"});'></li>" )
+                .data( "item.autocomplete", item )
+                .append( "<a onclick='addPlayer({id : \""+item.id+"\"});'><div class='scoutAutoCompletePlayer'><div class='scoutAutoCompletePlayer-name'>" + item.lastname + ", " + item.firstname + "</div><div class='scoutAutoCompletePlayer-position'>" + item.position + "</div><div class='scoutAutoCompletePlayer-team'>" + item.pro_team + "</div><div class='scoutAutoCompletePlayer-rosterLabel'>" + freeAgentLabel + "</div></div></a>")
+                .appendTo(ul);
+        },
+        source: function( request, response ) {
+            $.ajax({
+                url: autoCompleteInfo.requestURL,
+                type : 'GET',
+                dataType: "json",
+                data: {
+                    access_token: 'U2FsdGVkX1_TLFvoxzaYq-DI4BI8NeSw8XnchmlgZlyk3XekEiSkxr0eTJjn2bxsa2PqRUM2McFjGQ5nE24EymVOE1gj7-QgoBCl9Pynez367vqWNnsGpcKcI9KjwI0SDF0H9bkhgVF0r0Quhvo5eA',
+                    response_format: 'json',
+                    SPORT: 'football',
+                    league_id: '',
+                    name : request.term,
+                    limit : autoCompleteInfo.limit || 10,
+                    free_agents_only : 1
+                },
+                success: function( data ) {
+                    var body = data.body,
+                        players = body.players;
+
+                    response( $.map( players, function( item ) { return item; }));
+                }
+            });
+        }
+    };
+    var addDropAutoComplete = new CBSi.widget.PlayerAutoComplete( autoCompleteInfo, "div" );
+});
+
+function addPlayer(player) {
+    addPlayersToScoutTeam( [ player.id ] );
+}
+
+function addPlayersToScoutTeam(playerIds) {
+    var response, params = {}, players = [], data = {};
+
+    for ( var i=0, len=playerIds.length; i<len; i++ ) {
+        players.push( { 'id' : playerIds[i], 'state' : "add" } );
+    }
+    data['players'] = players;
+
+    params = {
+        payload : JSON.stringify( data ),
+        access_token : lineupBuilder.token,
+        method : 'PUT'
+    };
+
+    response = Waldo.retrieve({
+        uri : "/api/players/scout-team",
+        uriAlias: "addtoScoutTeam",
+        type : "GET",
+        params : params,
+        callback : {
+            success : function() {
+                $(".rosterReportReload").trigger("click");
+
+                //DW.redir({ctype: 'ria;evt;objtyp;obj', cval: 'Scout;click;transaction btn;Add to Scout Team'});
+            }
+        }
+    });
+}
+
+function addPlayers() {
+    var playerIds = [];
+    $("#searchresults input[type=checkbox]").each( function(i,val) {
+        if ( $(val).is(":checked") ) {
+            playerIds.push( val.name );
+        }
+    });
+    addPlayersToScoutTeam( playerIds );
+}
+var requestObjectPS = null;
+var scouted = new Array();
+
+
+function findPlayers() {
+    var response,
+        searchValField = document.getElementById('scoutSearchInput'),
+        searchVal      = searchValField.value;
+    
+    $( "#scoutSearchInput" ).autocomplete( "close" );
+    
+    response = Waldo.retrieve({
+        type : "GET", 
+        uri  : "/api/players/search",
+        uriAlias : "searchPlayers",
+        params : {
+            name : searchVal,
+            access_token : lineupBuilder.token
+        },
+        callback : {
+            success : function () {
+                var i, j, len, HTML = '',
+                    playersHTML = [],
+                    data    = this.data(),
+                    players = data.players;
+                
+                len = players.length;
+                j   = parseInt(len / 4 ) + 1;
+
+                if ( players.length > 0 ) {
+                    playersHTML.push('<div class="row spacerVertical20">');
+                    for ( var i=0; i<len; i++ ) {
+                        
+                        playersHTML.push('<div class="col-3">');
+                        playersHTML.push('<input type="checkbox" name="' + players[i].id + '" data="scoutSearchResults">');
+                        playersHTML.push(' <div class="playerNewsPlayerName"><a class="playerLink" href="/players/playerpage/'+players[i].id+'">' + players[i].fullname + '</a></div>');
+                        playersHTML.push(' <span class="playerPositionAndTeam">' + players[i].position + ' | ' + players[i].pro_team + '</span>');
+                        playersHTML.push('</div>');                        
+                        
+                    
+                    }
+                    playersHTML.push('</div>');
+                    HTML = "<table id=\"scoutPlayerResults\" style='SLTable; clear:both;'><!--<tr><th colspan=4>" + players.length + " Player" + (players.length > 1 ? "s" : "") + " Found" + (players.length > 58 ? " (only showing first 60 matches)" : "") + "</th></tr>-->" + playersHTML.join('') + "<tr><td colspan=4 align=center style='padding-left:20px;'><input value='Add Selected Players to Scout Team' type='button' onclick='addPlayers()' class='btn-primary'></td></tr></table>";
+                }
+                else {
+                    HTML = "<br>No players were found.<br>";
+                }
+                $('#searchresults').html(HTML);
+            }
+        }
+    });
+}
+</script>
+
+<br>
+
+<table cellpadding=0 cellspacing=0 border=0 class="yui-skin-sam">
+    <tr>
+        <td style="width: 200px; vertical-align: middle !important; padding-left:20px">
+            <b>Find More Players to Scout</b> 
+            &nbsp; 
+        </td>
+        <td>
+            <form style="display:inline;" onsubmit='findPlayers(); return false;'>
+            <input type=text id=scoutSearchInput style="width: 350px !important" name=searchname> 
+            <input value="Search" class="btn-primary" type="button" onclick="findPlayers()">
+            <div id="scoutSearchResult" style="width: 400px;"></div>
+            </form>
+        </td>
+    </tr>
+    <tr>
+        <td colspan=2>
+            <div name=searchresults id=searchresults></div>
+        </td>
+    </tr>
+</table>
+
+<br>
+<div class="legendContainer"><div class="legendRow"><div class="legendIcons"><span class="legendIcon icon-red_cross"></span><span class="legendIconDesc">Injury</span><span class="legendIcon icon-suspended"></span><span class="legendIconDesc">Suspended</span><span class="legendIcon icon-news-note-recent"></span><span class="legendIconDesc">Player News</span><span class="legendIcon icon-news-note-hot"></span><span class="legendIconDesc">Hot Player</span><span class="legendIcon icon-news-note-cold"></span><span class="legendIconDesc">Cold Player</span><span class="legendIcon icon-news-inactives"></span><span class="legendIconDesc">Inactive Player</span></div></div></div>
+
+<!-- <br>
+<br>
+<table width=90% cellpadding=0 cellspacing=0 border=0><tr><td>
+<b>Feature Overview</b>
+</td></tr><tr><td>
+The scout team feature allows you to track a list of players not on your roster, including both available players and players on other teams.  You can add or remove players from your Scout Team by clicking the 'Scout This Player' button available on a player's profile page.  This list of players is then available in the following places throughout the product:
+<br>
+<ul>
+<li>On your 'My Scout Team' page (this page) along with select stats, upcoming schedules and roster trends</li>
+<li>In the 'Stats' reports to view various stats sources on these players</li>
+<li>The 'Live Scoring' allows you to view live statistics for these players</li>
+<li>'Player News' on the league home page and below the 'Players' menu will show you the latest player updates and analysis for these players</li>
+</ul>
+</td></tr></table>
+<br>
+<br> -->
+</div>
+             </form>
+    </span>
+    <script type="text/javascript">
+    var lineupBuilder;
+    $(function() { $("#siteToolsBar").show(); });
+    function initLineupBuilder() {
+        lineupBuilder = new CBSi.app.LineupBuilder({ 
+            basePath:'/teams/lineup-view', 
+            queryParams:'team=scout&point=1&period=1&force_gambling_state=', 
+            rosterMap: {"rosterMap":{"player":{"3123469":{"slot":"0","sponsorOptimize":0,"lockState":"0","group":"Offense","fullName":"Breece Hall","pos":"RB","wildcards":{},"id":"3123469","elig":{"posEligArray":["RB","RB-WR-TE"],"wildcards":{},"currPos":"RB","posEligHash":{"ML":1,"RS":1,"RB-WR-TE":1,"RB":1}},"status":"A","team":"NYJ","eligCats":{"catEligArray":["Offense"],"catEligHash":{"Offense":1}},"comingOffIMlStatus":null},"1929":{"slot":"2","sponsorOptimize":0,"lockState":"0","group":"Defense","fullName":"Commanders","pos":"DST","wildcards":{},"id":"1929","elig":{"posEligArray":["DST"],"wildcards":{},"currPos":"DST","posEligHash":{"ML":1,"RS":1,"DST":1}},"status":"A","team":"WAS","eligCats":{"catEligArray":["Defense"],"catEligHash":{"Defense":1}},"comingOffIMlStatus":null},"1909":{"slot":"1","sponsorOptimize":0,"lockState":"0","group":"Defense","fullName":"Broncos","pos":"DST","wildcards":{},"id":"1909","elig":{"posEligArray":["DST"],"wildcards":{},"currPos":"DST","posEligHash":{"ML":1,"RS":1,"DST":1}},"status":"A","team":"DEN","eligCats":{"catEligArray":["Defense"],"catEligHash":{"Defense":1}},"comingOffIMlStatus":null}},"slot":{"Defense_Row_1":{"slot":"1","sponsorOptimize":0,"lockState":"0","origId":"1909","group":"Defense","pos":"DST","id":"1909","elig":{"posEligArray":["DST"],"wildcards":{},"currPos":"DST","posEligHash":{"ML":1,"RS":1,"DST":1}},"status":"A","eligCats":{"catEligArray":["Defense"],"catEligHash":{"Defense":1}},"comingOffIMlStatus":null},"Offense_Row_0":{"slot":"0","sponsorOptimize":0,"lockState":"0","origId":"3123469","group":"Offense","pos":"RB","id":"3123469","elig":{"posEligArray":["RB","RB-WR-TE"],"wildcards":{},"currPos":"RB","posEligHash":{"ML":1,"RS":1,"RB-WR-TE":1,"RB":1}},"status":"A","eligCats":{"catEligArray":["Offense"],"catEligHash":{"Offense":1}},"comingOffIMlStatus":null},"Defense_Row_2":{"slot":"2","sponsorOptimize":0,"lockState":"0","origId":"1929","group":"Defense","pos":"DST","id":"1929","elig":{"posEligArray":["DST"],"wildcards":{},"currPos":"DST","posEligHash":{"ML":1,"RS":1,"DST":1}},"status":"A","eligCats":{"catEligArray":["Defense"],"catEligHash":{"Defense":1}},"comingOffIMlStatus":null}},"rowIndex":3}},
+            usesKeepers: 1,
+            maxKeepers: 1,
+            showSportslineAccrOverview : 1,
+            showGamblingAccreditation : 1,
+            commishMode: 0,
+            commishAction: "",
+            mine: "",
+            maxBench: "7",
+            allTeams: "",
+            token: "U2FsdGVkX1_TLFvoxzaYq-DI4BI8NeSw8XnchmlgZlyk3XekEiSkxr0eTJjn2bxsa2PqRUM2McFjGQ5nE24EymVOE1gj7-QgoBCl9Pynez367vqWNnsGpcKcI9KjwI0SDF0H9bkhgVF0r0Quhvo5eA",
+            statusLookup: {"ML":"minors","RS":"reserve","I":"injured","A":"active","PR":"practice"},
+            fantasyApiHTTPServer: 'http://api.cbssports.com/fantasy',
+        });
+        // On first load this should be for the first view
+        // Currently this is the schedule
+        lineupBuilder.navView = {};
+        lineupBuilder.navView.priNav = "overview";
+        lineupBuilder.navView.secNav = "overview";
+        lineupBuilder.navView.action = "scout";
+        //lineupBuilder.currentView = ;
+
+        //lineupBuilder.navDiv = document.getElementById('lineup_nav');
+        lineupBuilder.contentDiv = document.getElementById('lineup_views');
+        lineupBuilder.progressIndicatorName = 'playerTableTabSpinner';
+        $(document).ready( function() {
+            if (stb != undefined) {
+                var period = lineupBuilder._getQueryString("period", stb.btns.btnPrint);
+                if (period != null) {
+                    stb.btns.btnPrint = lineupBuilder._updateQueryStringParameter(stb.btns.btnPrint, "period", 1);
+                    stb.btns.btnExport = lineupBuilder._updateQueryStringParameter(stb.btns.btnExport, "period", 1);
+                } else if (1 != null) {
+                    if ( stb.btns.btnPrint.indexOf('?') == -1 ) {
+                        stb.btns.btnPrint += "?period="+1;
+                    } else {
+                        stb.btns.btnPrint += "&period="+1;
+                    }
+                    if (stb.btns.btnExport.indexOf('?') == -1 ) {
+                        stb.btns.btnExport += "?period="+1;
+                    } else {
+                        stb.btns.btnExport += "&period="+1;
+                    }
+                }
+            }
+            lineupBuilder.init();
+           
+            
+        
+        });
+    }
+    initLineupBuilder();
+
+    function initAsstGM() {
+        lineupBuilder = new CBSi.app.Lineup.AsstGM({});
+        $(document).ready( function() {
+            lineupBuilder.init();
+        });
+    }
+    </script><!-- Page build info: tbattista89 'fantasy-frontend-prod-557f447459-2vdkq' 14731 20260824 11:44:38  -->
