@@ -46,6 +46,13 @@ Easiest way, no cookie-hunting required:
 3. Right-click → **Copy** → **Copy as cURL**
 4. Save it as `curl.txt` in this repo
 
+On Windows, Chrome offers both **cmd** and **bash** variants. **Choose bash**,
+even though you're on Windows — the file is only ever read as text, never
+executed. The cmd form doubles every `%`, and CBS cookies are dense with
+percent-encoded values, so a cmd copy arrives corrupt and CBS answers it with a
+login redirect that looks exactly like an expired session. The parser repairs
+cmd escaping if you grab it anyway, but bash avoids the problem entirely.
+
 That one blob carries the cookies, your user-agent, and the league URL together,
 so there's nothing to assemble by hand.
 

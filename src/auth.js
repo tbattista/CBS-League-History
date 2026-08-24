@@ -20,10 +20,43 @@ import { resolve } from 'node:path';
 
 const CURL_FILE = 'curl.txt';
 
-/** Chrome quotes with ' on macOS/Linux and " on Windows. Handle both. */
+/**
+ * Chrome quotes with ' in its bash form and " in its cmd form. Handle both, and
+ * report which one matched so cmd's escaping can be undone.
+ */
 function extractQuoted(source, pattern) {
   const match = source.match(pattern);
-  return match ? match[2] : null;
+  if (!match) return null;
+  return { value: match[2], quote: match[1] };
+}
+
+/**
+ * Undo Chrome's "Copy as cURL (cmd)" escaping.
+ *
+ * This matters more than it looks. cmd escaping doubles every '%', and CBS
+ * session cookies are dense with percent-encoded values (pid=S%3A1%3A...). A
+ * cmd-copied cookie is therefore silently corrupt, and CBS answers it with a
+ * login redirect that is indistinguishable from an expired session -- so the
+ * user would go re-copy a cookie that was never the problem.
+ *
+ * Recommend bash; repair cmd anyway.
+ */
+function unescapeCmd(value) {
+  return value
+    .replace(/\^\r?\n\s*/g, '') // line continuations
+    .replace(/%%/g, '%')
+    .replace(/\^([&<>|^])/g, '$1')
+    .replace(/""/g, '"');
+}
+
+function readField(source, patterns) {
+  for (const pattern of patterns) {
+    const found = extractQuoted(source, pattern);
+    if (!found) continue;
+    const value = found.quote === '"' ? unescapeCmd(found.value) : found.value;
+    return value.trim();
+  }
+  return null;
 }
 
 /**
@@ -34,21 +67,18 @@ function extractQuoted(source, pattern) {
  * things out of it.
  */
 export function parseCurl(text) {
-  const cookieHeader =
-    extractQuoted(text, /-H\s+(['"])cookie:\s*([\s\S]*?)\1/i) ??
-    extractQuoted(text, /(?:^|\s)-b\s+(['"])([\s\S]*?)\1/);
+  const cookie = readField(text, [
+    /-H\s+(['"])cookie:\s*([\s\S]*?)\1/i,
+    /(?:^|\s)-b\s+(['"])([\s\S]*?)\1/,
+  ]);
 
-  const userAgent = extractQuoted(text, /-H\s+(['"])user-agent:\s*([\s\S]*?)\1/i);
+  const userAgent = readField(text, [/-H\s+(['"])user-agent:\s*([\s\S]*?)\1/i]);
 
   // The request URL is the first quoted http(s) argument.
   const urlMatch = text.match(/(['"])(https?:\/\/[^'"]+)\1/);
   const url = urlMatch ? urlMatch[2] : null;
 
-  return {
-    cookie: cookieHeader ? cookieHeader.trim() : null,
-    userAgent: userAgent ? userAgent.trim() : null,
-    url,
-  };
+  return { cookie, userAgent, url };
 }
 
 /**

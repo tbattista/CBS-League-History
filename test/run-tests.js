@@ -29,6 +29,25 @@ test('parseCurl handles Windows double-quoted form', () => {
   assert.equal(parsed.url, 'https://myleague.football.cbssports.com/history');
 });
 
+test('parseCurl repairs cmd-form percent escaping', () => {
+  // Chrome's cmd form doubles every '%'. CBS cookies are full of percent
+  // encoding, so a cmd copy is silently corrupt unless we undo this.
+  const blob =
+    `curl "https://myleague.football.cbssports.com/history" ^\r\n` +
+    `  -H "cookie: pid=S%%3A1%%3AvrhEvVgtZOAhsrDWFZ2K%%252Fw%%253D%%253D%%3A1; anon=FALSE"`;
+  const parsed = parseCurl(blob);
+  assert.equal(parsed.cookie, 'pid=S%3A1%3AvrhEvVgtZOAhsrDWFZ2K%252Fw%253D%253D%3A1; anon=FALSE');
+  assert.ok(!parsed.cookie.includes('%%'), 'cmd escaping left in place');
+});
+
+test('parseCurl leaves bash-form percent encoding untouched', () => {
+  const blob =
+    `curl 'https://myleague.football.cbssports.com/history' \\\n` +
+    `  -H 'cookie: pid=S%3A1%3Aabc%253D%253D; anon=FALSE'`;
+  const parsed = parseCurl(blob);
+  assert.equal(parsed.cookie, 'pid=S%3A1%3Aabc%253D%253D; anon=FALSE');
+});
+
 test('parseCurl handles the -b cookie form', () => {
   const parsed = parseCurl(`curl 'https://x.football.cbssports.com/' -b 'pid=jar456'`);
   assert.equal(parsed.cookie, 'pid=jar456');
