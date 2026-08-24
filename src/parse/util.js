@@ -117,13 +117,37 @@ export function findTable($, required) {
  * Split CBS's player cell: "Adrian Peterson RB •" -> name + position.
  * The bullet marks NFL-team info that is not present in the archived text.
  */
+const POSITIONS = 'QB|RB|WR|TE|K|DST|DEF|D/ST|LB|DL|DB|PK';
+
 export function parsePlayer(text) {
   const value = clean(text);
-  if (!value) return { player: null, position: null };
+  if (!value) return { player: null, position: null, nflTeam: null };
+
+  /*
+   * Two formats, both live in this archive:
+   *
+   *   "Adrian Peterson RB •"          older seasons -- nothing after the bullet
+   *   "Odell Beckham Jr. WR • NYG"    newer seasons -- NFL team after it
+   *
+   * Matching only the first shape leaves every newer pick with a null position
+   * and the club abbreviation glued onto the player's name.
+   */
+  const full = value.match(new RegExp(`^(.*?)\\s+(${POSITIONS})\\s*[•·]\\s*([A-Za-z]{2,4})?$`, 'i'));
+  if (full) {
+    return {
+      player: clean(full[1]),
+      position: full[2].toUpperCase(),
+      nflTeam: full[3] ? full[3].toUpperCase() : null,
+    };
+  }
+
   const stripped = value.replace(/\s*[•·]\s*$/, '').trim();
-  const match = stripped.match(/^(.*?)\s+(QB|RB|WR|TE|K|DST|DEF|D\/ST|LB|DL|DB|PK)$/i);
-  if (match) return { player: clean(match[1]), position: match[2].toUpperCase() };
-  return { player: stripped, position: null };
+  const trailing = stripped.match(new RegExp(`^(.*?)\\s+(${POSITIONS})$`, 'i'));
+  if (trailing) {
+    return { player: clean(trailing[1]), position: trailing[2].toUpperCase(), nflTeam: null };
+  }
+
+  return { player: stripped, position: null, nflTeam: null };
 }
 
 /** "73.1 - 94.6" -> [73.1, 94.6]. Returns nulls when unscored. */

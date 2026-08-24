@@ -11,6 +11,7 @@
     "crawl": "node src/cli.js crawl",
     "report": "node src/cli.js report",
     "parse": "node src/cli.js parse",
+    "start": "node server.js",
     "test": "node --test test/run-tests.js test/parse-tests.js"
   },
   "dependencies": {

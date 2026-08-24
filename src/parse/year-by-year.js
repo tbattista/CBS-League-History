@@ -97,14 +97,26 @@ export function parseYearByYear(html, { year } = {}) {
         if (!home) return;
 
         const [awayScore, homeScore] = parseScore(result);
+
+        /*
+         * Not every row is a game between two teams.
+         *
+         * "BYE" is a real team scored against nobody. "TBA" is an unplayed
+         * playoff bracket slot -- CBS renders the empty half of a bracket that
+         * way, and there are 16-22 of them in every season. Treating either as
+         * an opponent invents a franchise and hands out free wins.
+         */
+        const isPlaceholder = (name) => name != null && /^(BYE|TBA|TBD)$/i.test(name);
+
         matchups.push({
           week,
-          away: away === 'BYE' ? null : away,
-          home,
+          away: isPlaceholder(away) ? null : away,
+          home: isPlaceholder(home) ? null : home,
           awayScore,
           homeScore,
-          // A bye still appears as a row, scored 0.0 against the real team.
-          bye: away === 'BYE' || home === 'BYE',
+          bye: /^BYE$/i.test(away ?? '') || /^BYE$/i.test(home ?? ''),
+          // Both sides real, so the result counts toward head-to-head.
+          contested: !isPlaceholder(away) && !isPlaceholder(home) && away != null && home != null,
         });
       });
     }

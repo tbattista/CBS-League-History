@@ -123,27 +123,141 @@ export function buildDataset(dataDir) {
     delete entry.seasonTeams;
   }
 
+  for (const entry of list) resolveIds(entry);
+
+  const franchises = buildFranchises(list);
+  attachSeasonLines(franchises, list);
+
   return {
     league: {
       name: leagueName,
       seasons: list.map((s) => s.year),
       firstSeason: list[0]?.year ?? null,
       lastSeason: list[list.length - 1]?.year ?? null,
+      totalGames: list.reduce((sum, s) => sum + s.matchups.filter((m) => m.contested).length, 0),
+      totalPicks: list.reduce((sum, s) => sum + (s.draft?.picks.length ?? 0), 0),
     },
-    franchises: buildFranchises(list),
+    franchises,
+    headToHead: buildHeadToHead(list),
     seasons: list,
   };
 }
 
+/**
+ * Matchups and draft picks name teams; only the standings form carries ids.
+ * Resolving names to ids per season is what makes head-to-head and franchise
+ * history possible at all -- across seasons the same name can be two different
+ * franchises, and the same franchise several different names.
+ */
+function resolveIds(season) {
+  const toId = new Map();
+  for (const team of season.teams) if (team.name) toId.set(team.name, team.teamId);
+
+  for (const matchup of season.matchups) {
+    matchup.awayId = matchup.away ? (toId.get(matchup.away) ?? null) : null;
+    matchup.homeId = matchup.home ? (toId.get(matchup.home) ?? null) : null;
+  }
+  for (const pick of season.draft?.picks ?? []) {
+    pick.teamId = pick.team ? (toId.get(pick.team) ?? null) : null;
+  }
+  season.championId = season.champion ? (toId.get(season.champion) ?? null) : null;
+}
+
+/** Every franchise's season-by-season line, for sparklines and team pages. */
+function attachSeasonLines(franchises, seasons) {
+  const byId = new Map(franchises.map((f) => [f.teamId, f]));
+  for (const franchise of byId.values()) franchise.seasonStats = [];
+
+  for (const season of seasons) {
+    for (const team of season.teams) {
+      const franchise = byId.get(team.teamId);
+      if (!franchise) continue;
+      franchise.seasonStats.push({
+        year: season.year,
+        name: team.name,
+        wins: team.wins,
+        losses: team.losses,
+        ties: team.ties,
+        finish: team.finish,
+        pointsFor: team.pointsFor,
+        pointsAgainst: team.pointsAgainst,
+        champion: season.championId
+          ? season.championId === team.teamId
+          : season.champion === team.name,
+      });
+    }
+  }
+  for (const franchise of byId.values()) {
+    franchise.seasonStats.sort((a, b) => a.year - b.year);
+  }
+}
+
+/**
+ * All-time record between every pair of franchises.
+ *
+ * Byes are excluded -- CBS records them as a real row scored 0.0, and counting
+ * them would hand free wins to whoever drew one.
+ */
+function buildHeadToHead(seasons) {
+  const records = new Map();
+  const key = (a, b) => `${a}|${b}`;
+
+  const bump = (a, b, won, tied, scored, allowed) => {
+    if (!records.has(key(a, b))) {
+      records.set(key(a, b), {
+        teamId: a,
+        opponentId: b,
+        wins: 0,
+        losses: 0,
+        ties: 0,
+        pointsFor: 0,
+        pointsAgainst: 0,
+      });
+    }
+    const record = records.get(key(a, b));
+    if (tied) record.ties++;
+    else if (won) record.wins++;
+    else record.losses++;
+    record.pointsFor += scored ?? 0;
+    record.pointsAgainst += allowed ?? 0;
+  };
+
+  for (const season of seasons) {
+    for (const m of season.matchups) {
+      if (!m.contested || !m.homeId || !m.awayId) continue;
+      if (m.homeScore == null || m.awayScore == null) continue;
+      const tied = m.homeScore === m.awayScore;
+      bump(m.homeId, m.awayId, m.homeScore > m.awayScore, tied, m.homeScore, m.awayScore);
+      bump(m.awayId, m.homeId, m.awayScore > m.homeScore, tied, m.awayScore, m.homeScore);
+    }
+  }
+
+  return [...records.values()].map((r) => ({
+    ...r,
+    pointsFor: round(r.pointsFor),
+    pointsAgainst: round(r.pointsAgainst),
+  }));
+}
+
+/**
+ * Choose between the several drafts CBS keeps per season.
+ *
+ * Rank by picks that actually name a player, not by row count. A re-drafted
+ * season leaves behind a numbered draft with a full slate of teams and no
+ * players at all -- 208 empty rows, which beats a complete draft on row count
+ * alone. That is how the 2025 board came out reading "no player recorded" from
+ * top to bottom while the real draft sat unused in the archive.
+ */
 function better(candidate, existing) {
+  const named = (d) => d.picks.filter((p) => p.player).length;
+  if (named(candidate) !== named(existing)) return named(candidate) > named(existing);
+
   const rank = (d) => {
     const index = DRAFT_LABEL_PRIORITY.indexOf(d.label);
     return index === -1 ? DRAFT_LABEL_PRIORITY.length : index;
   };
-  if (candidate.picks.length !== existing.picks.length) {
-    return candidate.picks.length > existing.picks.length;
-  }
-  return rank(candidate) < rank(existing);
+  if (rank(candidate) !== rank(existing)) return rank(candidate) < rank(existing);
+  return candidate.picks.length > existing.picks.length;
 }
 
 /**

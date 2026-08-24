@@ -5,8 +5,27 @@ as a dashboard. Built because CBS displays years of league history but gives you
 no way to export it — and a league that lives only on someone else's server is
 one product decision away from gone.
 
-**Status:** phase 1 (archival) is built and tested. Phase 2 (parsing) and phase 3
-(dashboard) come next, written against real pages rather than guesses.
+**Status:** all three phases are working — archive, parse, and dashboard.
+
+```bash
+npm install
+npm start        # http://localhost:3000
+```
+
+## What's in here
+
+| Command | What it does |
+|---|---|
+| `npm run check` | Verify the CBS session cookie works |
+| `npm run crawl` | Archive the league to `data/raw/` |
+| `npm run report` | Structural survey of what was archived |
+| `npm run parse` | Build `data/league.json` from the archive |
+| `npm start` | Serve the dashboard |
+| `npm test` | Run the test suite |
+
+The dashboard reads the committed `data/league.json` — it never talks to CBS.
+Session cookies expire within days, so a site that needed one would be broken
+more often than it worked.
 
 ## Why it's split into phases
 
@@ -176,9 +195,47 @@ safety, and a full end-to-end crawl against a mock CBS league that reproduces
 the real site's cookie gating, sort links, editorial noise, and — importantly —
 older seasons reachable only by URL, never by link.
 
+## The dataset
+
+`npm run parse` turns the raw archive into `data/league.json`:
+
+- **seasons** — final standings, champion, every matchup, the season record book
+- **franchises** — a team's whole history, tracked by CBS's internal team id
+- **headToHead** — all-time record between every pair of franchises
+- **drafts** — every pick, with position and (where CBS published it) the points
+  that player actually went on to score
+
+**Franchises are keyed by team id, not name.** Teams rename constantly here —
+one went `ill take the rapist` → `Anthony Micheletti` → `Chilling with Mahomes`
+→ `Reid's Stache` across fourteen seasons — and two *different* franchises have
+both been called "The Bernies". Only the id holds a history together.
+
+Sources are chosen per field, because the pages differ in kind:
+
+| Page | Used for | Note |
+|---|---|---|
+| `history/standings/<year>` | team ids, divisions, finish, full record | a commissioner **edit form** — values live in `<input>`, not cell text |
+| `history/year-by-year/<year>` | records, champion, matchups | the only plain rendered page |
+| `history/champion/<year>` | champion confirmation | only explicitly-selected options count |
+| `draft/results/…` | picks | several drafts exist per season; the one with real players wins |
+
+Awards pages are deliberately **not** imported. This league never used them —
+most seasons have zero assignments, and 2015's single entry contradicts both
+other champion sources. That would add wrong data, which is worse than none.
+
+Parsed champions were validated against CBS's own Most Championships table and
+reproduce it exactly, including three franchises whose titles span different
+team names.
+
 ## Deployment
 
-Railway is the target for the dashboard (phase 3). Note that the **scraper**
-wants to run wherever you can get a fresh session cookie — usually your own
-machine — while the **site** is what gets deployed. They share this repo and the
-committed `data/`, but they don't have to run in the same place.
+Railway, via `railway.json` — Nixpacks build, `npm start`, health check on
+`/healthz`. The server binds `process.env.PORT`. No database and no runtime
+dependencies: it serves static files plus one JSON document.
+
+Keep the two halves separate in your head. The **scraper** needs a fresh session
+cookie, so it runs wherever you can get one — realistically your own machine.
+The **site** is what deploys, and it only needs the committed data.
+
+To refresh after a new season: run `npm run crawl` (it resumes), then
+`npm run parse`, then commit `data/`.

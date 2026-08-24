@@ -53,7 +53,7 @@ export function parseDraft(html, { year, label } = {}) {
 
     // Older seasons label the column "Rnd/Pk" and newer ones "Pick".
     const pickCell = at('pick') ?? at('rnd/pk');
-    const { player, position } = parsePlayer(at('player'));
+    const { player, position, nflTeam } = parsePlayer(at("player"));
 
     /*
      * A pick with no player is still a pick.
@@ -72,6 +72,7 @@ export function parseDraft(html, { year, label } = {}) {
       team: at('team'),
       player,
       position: position ?? clean(at('elig')),
+      nflTeam,
       elapsed: at('elapsed time'),
       totalPoints: num(at('total fpts')),
       activePoints: num(at('active fpts')),

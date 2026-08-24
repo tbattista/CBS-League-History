@@ -27,19 +27,35 @@ test('clean normalizes CBS placeholders to null', () => {
   assert.equal(clean(''), null);
 });
 
-test('parsePlayer splits name from position', () => {
+test('parsePlayer handles both draft-cell formats in this archive', () => {
+  // Older seasons: nothing after the bullet.
   assert.deepEqual(parsePlayer('Adrian Peterson RB •'), {
     player: 'Adrian Peterson',
     position: 'RB',
+    nflTeam: null,
+  });
+  // Newer seasons: NFL club after the bullet. Matching only the older shape
+  // left these with a null position and "WR • NYG" stuck to the name.
+  assert.deepEqual(parsePlayer('Odell Beckham Jr. WR • NYG'), {
+    player: 'Odell Beckham Jr.',
+    position: 'WR',
+    nflTeam: 'NYG',
+  });
+  assert.deepEqual(parsePlayer('Amon-Ra St. Brown WR • DET'), {
+    player: 'Amon-Ra St. Brown',
+    position: 'WR',
+    nflTeam: 'DET',
   });
   assert.deepEqual(parsePlayer('Rob Gronkowski TE'), {
     player: 'Rob Gronkowski',
     position: 'TE',
+    nflTeam: null,
   });
   // A name with no trailing position must not lose its last word.
   assert.deepEqual(parsePlayer('Seattle Seahawks'), {
     player: 'Seattle Seahawks',
     position: null,
+    nflTeam: null,
   });
 });
 
@@ -186,6 +202,7 @@ test('parseDraft carries the round forward from the banner row', () => {
     team: "Bryan's Ballers",
     player: 'Adrian Peterson',
     position: 'RB',
+    nflTeam: null,
     elapsed: null,
     totalPoints: 234.5,
     activePoints: 217.9,
