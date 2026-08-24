@@ -107,6 +107,33 @@ export function buildCoverage(manifest) {
   };
 }
 
+/**
+ * Pages that fetched cleanly but carry almost no data.
+ *
+ * A table with a header and one row is the fingerprint of content the server
+ * did not render -- loaded by JavaScript, or behind a control the crawler never
+ * operated. It reads as success everywhere else: HTTP 200, file on disk, a
+ * table present, a row in the coverage grid.
+ *
+ * This is how the first real run's draft results looked. Every draft page
+ * archived "Pick | Team | Player | Elig" with a single row, for a draft with
+ * 150+ picks, and nothing else in the report said otherwise.
+ */
+export function findThinPages(pages) {
+  return pages
+    .filter((page) => {
+      if (page.tableCount === 0) return false;
+      const biggest = Math.max(...page.tables.map((t) => t.rowCount));
+      return biggest <= 2;
+    })
+    .map((page) => ({
+      url: page.url,
+      title: page.title,
+      largestTable: Math.max(...page.tables.map((t) => t.rowCount)),
+      headers: page.tables[0]?.headers ?? [],
+    }));
+}
+
 export function buildReport(dataDir) {
   const manifestPath = join(dataDir, 'manifest.json');
   if (!existsSync(manifestPath)) {
@@ -140,6 +167,7 @@ export function buildReport(dataDir) {
     })),
     seasonsDetected: [...allYears].sort(),
     coverage: buildCoverage(manifest),
+    thinPages: findThinPages(pages),
     pages,
   };
 
@@ -207,6 +235,19 @@ export function printReport(report) {
       console.log(`    table  : ${table.rowCount} rows | ${table.headers.join(' | ')}`);
     }
     console.log('');
+  }
+
+  if (report.thinPages?.length) {
+    console.log(
+      `\nSuspiciously empty pages (${report.thinPages.length}) -- fetched fine,\n` +
+        `but their biggest table has 2 rows or fewer. Usually means the content\n` +
+        `is rendered by JavaScript rather than sent in the HTML:\n`,
+    );
+    for (const page of report.thinPages.slice(0, 20)) {
+      const url = new URL(page.url);
+      console.log(`  ${url.pathname}${url.search}`);
+      console.log(`    ${page.largestTable} rows | ${page.headers.join(' | ')}`);
+    }
   }
 
   if (report.failures.length) {

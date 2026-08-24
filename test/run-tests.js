@@ -15,7 +15,7 @@ import {
   normalizeUrl,
   seasonBackfillUrls,
 } from '../src/crawl.js';
-import { buildReport, buildCoverage } from '../src/report.js';
+import { buildReport, buildCoverage, findThinPages } from '../src/report.js';
 
 test('parseCurl handles Chrome copy-as-cURL on mac/linux', () => {
   const blob = `curl 'https://myleague.football.cbssports.com/history/standings' \\
@@ -269,6 +269,29 @@ test('buildCoverage exposes per-season holes that totals hide', () => {
     !coverage.seasons.find((s) => s.year === '2014').has.includes('standings'),
     'a failed fetch was counted as coverage',
   );
+});
+
+test('findThinPages flags pages that fetched fine but carry no data', () => {
+  const pages = [
+    {
+      url: 'https://x.com/draft/results/2025:Pre-season:Pre-season',
+      title: 'Draft',
+      tableCount: 1,
+      tables: [{ headers: ['Pick', 'Team', 'Player', 'Elig'], rowCount: 2 }],
+    },
+    {
+      url: 'https://x.com/history/standings/2025',
+      title: 'Standings',
+      tableCount: 1,
+      tables: [{ headers: ['Finish', 'Team', 'W', 'L'], rowCount: 15 }],
+    },
+    { url: 'https://x.com/about', title: 'About', tableCount: 0, tables: [] },
+  ];
+
+  const thin = findThinPages(pages);
+  assert.equal(thin.length, 1, 'only the near-empty table should be flagged');
+  assert.ok(thin[0].url.includes('/draft/results/'));
+  assert.equal(thin[0].largestTable, 2);
 });
 
 test('crawl aborts loudly when the session cookie is dead', async (t) => {

@@ -112,6 +112,9 @@ export function shouldFollow(urlString, leagueOrigin) {
   return RELEVANT.some((term) => haystack.includes(term));
 }
 
+/** Draft variants CBS exposes per season. "Official" is usually the real one. */
+const DRAFT_LABELS = ['Official', 'Pre-season', 'Season'];
+
 /**
  * Per-season pages, keyed directly by year.
  *
@@ -127,7 +130,14 @@ export const SEASON_URL_PATTERNS = [
   (year) => `/history/champion/${year}`,
   (year) => `/history/awards/${year}`,
   (year) => `/history/team-overview/${year}`,
-  (year) => `/draft/results/${year}:Pre-season:Pre-season`,
+  // Each season has several drafts, not one. A league's draft-results page
+  // exposes them through a dropdown reading "2025 - Official", "2025 - 3",
+  // "2025 - Pre-season" and so on, and the URL carries that label. The first
+  // real run only ever hit Pre-season, which for most seasons is an abandoned
+  // mock -- the actual draft is usually Official. Try the plausible labels and
+  // let the coverage grid show which ones came back with data.
+  ...DRAFT_LABELS.map((label) => (year) => `/draft/results/${year}:${label}:${label}`),
+  (year) => `/draft/results/${year}`,
 ];
 
 /** Years the crawl has evidence for, read back out of the URLs it archived. */
