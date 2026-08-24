@@ -3,6 +3,7 @@ import { loadAuth, redact } from './auth.js';
 import { Fetcher } from './http.js';
 import { crawl, outputDir } from './crawl.js';
 import { buildReport, printReport } from './report.js';
+import { buildDataset, writeDataset } from './dataset.js';
 
 function parseFlags(argv) {
   const flags = {};
@@ -97,6 +98,40 @@ async function commandReport() {
   printReport(report);
 }
 
+async function commandParse() {
+  const dir = outputDir();
+  console.log(`Parsing archive in ${dir}...`);
+  const dataset = buildDataset(dir);
+  const path = writeDataset(dir, dataset);
+
+  const { league, franchises, seasons } = dataset;
+  console.log(`\nLeague : ${league.name ?? '<unknown>'}`);
+  console.log(`Seasons: ${seasons.length} (${league.firstSeason}-${league.lastSeason})`);
+  console.log(`Teams  : ${franchises.length} franchises\n`);
+
+  console.log('Year  Teams  Games  Picks  Champion');
+  for (const season of seasons) {
+    console.log(
+      `${season.year}  ${String(season.teams.length).padStart(5)}  ` +
+        `${String(season.matchups.length).padStart(5)}  ` +
+        `${String(season.draft?.picks.length ?? 0).padStart(5)}  ` +
+        `${season.champion ?? '-'}`,
+    );
+  }
+
+  console.log(`\nAll-time (by win pct):\n`);
+  for (const f of franchises.slice(0, 10)) {
+    console.log(
+      `  ${(f.currentName ?? f.teamId).padEnd(28)} ` +
+        `${String(f.wins).padStart(3)}-${String(f.losses).padStart(3)}-${f.ties}  ` +
+        `${f.winPct.toFixed(3)}  ${String(f.games).padStart(3)}g  ${String(f.seasons.length).padStart(2)}s` +
+        (f.championships.length ? `  titles: ${f.championships.join(', ')}` : ''),
+    );
+  }
+
+  console.log(`\nWritten to ${path}`);
+}
+
 const [command, ...rest] = process.argv.slice(2);
 const flags = parseFlags(rest);
 
@@ -104,6 +139,7 @@ const commands = {
   check: () => commandCheck(),
   crawl: () => commandCrawl(flags),
   report: () => commandReport(),
+  parse: () => commandParse(),
 };
 
 if (!commands[command]) {
@@ -111,7 +147,8 @@ if (!commands[command]) {
     `CBS league history scraper\n\n` +
       `  npm run check                 Verify the session cookie works\n` +
       `  npm run crawl                 Archive the full league history\n` +
-      `  npm run report                Re-summarize what was archived\n\n` +
+      `  npm run report                Re-summarize what was archived\n` +
+      `  npm run parse                 Build the normalized dataset\n\n` +
       `Crawl flags:\n` +
       `  --max-pages=N   page cap (default 1500)\n` +
       `  --delay=MS      delay between requests (default 1000)\n` +

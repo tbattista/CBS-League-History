@@ -10,7 +10,8 @@
     "check": "node src/cli.js check",
     "crawl": "node src/cli.js crawl",
     "report": "node src/cli.js report",
-    "test": "node --test test/run-tests.js"
+    "parse": "node src/cli.js parse",
+    "test": "node --test test/run-tests.js test/parse-tests.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0"
