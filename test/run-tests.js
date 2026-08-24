@@ -161,6 +161,10 @@ test('seasonBackfillUrls walks outward from the seasons already seen', () => {
     assert.ok(urls.some((u) => u.endsWith(`/history/standings/${year}`)), `no standings for ${year}`);
   }
   assert.ok(urls.some((u) => u.includes('/draft/results/2015:Pre-season:Pre-season')));
+  // Re-drafted seasons are numbered, not named -- those were the ones a
+  // names-only label list missed entirely.
+  assert.ok(urls.some((u) => u.includes('/draft/results/2015:2:2')), 'no numbered draft variant');
+  assert.ok(urls.some((u) => u.includes('/draft/results/2015:Official:Official')));
   assert.equal(seasonBackfillUrls([], origin).length, 0, 'nothing known, nothing to backfill');
 });
 

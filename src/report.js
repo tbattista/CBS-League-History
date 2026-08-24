@@ -114,7 +114,14 @@ const SEASON_PAGE_KINDS = [
   ['draft', /\/draft\/results\/(\d{4}):/, { defines: false }],
 ];
 
-export function buildCoverage(manifest) {
+/**
+ * @param manifest   crawl manifest
+ * @param hasDataByUrl  optional url -> boolean, derived from the parsed pages.
+ *   Preferred when present: it reflects what is actually in the archived HTML,
+ *   so a report regenerated over an older archive is judged on the same terms
+ *   as a fresh one rather than on whatever the manifest happened to record.
+ */
+export function buildCoverage(manifest, hasDataByUrl = null) {
   const bySeason = new Map();
   const realSeasons = new Set();
 
@@ -122,7 +129,11 @@ export function buildCoverage(manifest) {
     // A page that returned 200 but carried no data table is not coverage. CBS
     // serves a normal-looking page for any year, so counting bare 200s here
     // produced a grid claiming complete coverage of 1996-2041.
-    if (!entry.ok || entry.hasData === false) continue;
+    if (!entry.ok) continue;
+    const hasData = hasDataByUrl?.has(entry.url)
+      ? hasDataByUrl.get(entry.url)
+      : entry.hasData !== false;
+    if (!hasData) continue;
     for (const [kind, pattern, opts] of SEASON_PAGE_KINDS) {
       const match = entry.url.match(pattern);
       if (!match) continue;
@@ -177,6 +188,23 @@ export function findThinPages(pages) {
     }));
 }
 
+/**
+ * Read "does this page hold real data" straight off the parsed pages.
+ *
+ * Uses dataRows -- full-width rows -- rather than raw row count, so a table
+ * that is only a banner plus a header does not read as populated.
+ */
+export function hasDataByUrl(pages) {
+  const map = new Map();
+  for (const page of pages) {
+    const best = page.tables.length
+      ? Math.max(...page.tables.map((t) => t.dataRows ?? t.rowCount))
+      : 0;
+    map.set(page.url, best > 2);
+  }
+  return map;
+}
+
 export function buildReport(dataDir) {
   const manifestPath = join(dataDir, 'manifest.json');
   if (!existsSync(manifestPath)) {
@@ -209,7 +237,7 @@ export function buildReport(dataDir) {
       error: f.error,
     })),
     seasonsDetected: [...allYears].sort(),
-    coverage: buildCoverage(manifest),
+    coverage: buildCoverage(manifest, hasDataByUrl(pages)),
     thinPages: findThinPages(pages),
     pages,
   };

@@ -112,8 +112,19 @@ export function shouldFollow(urlString, leagueOrigin) {
   return RELEVANT.some((term) => haystack.includes(term));
 }
 
-/** Draft variants CBS exposes per season. "Official" is usually the real one. */
-const DRAFT_LABELS = ['Official', 'Pre-season', 'Season'];
+/**
+ * Draft variants CBS exposes per season.
+ *
+ * A league that re-drafts gets numbered entries rather than named ones -- the
+ * draft dropdown reads "2025 - 3", "2024 - 2" alongside "2023 - Pre-season".
+ * Named labels alone found drafts for ten of fourteen seasons; the four that
+ * came up empty were all numbered ones.
+ *
+ * The numeric range is deliberately generous. These are cheap requests against
+ * a page that answers 200 regardless, and a missed draft is a hole in the
+ * archive that nothing else fills.
+ */
+const DRAFT_LABELS = ['Official', 'Pre-season', 'Season', '1', '2', '3', '4', '5'];
 
 /**
  * Per-season pages, keyed directly by year.
