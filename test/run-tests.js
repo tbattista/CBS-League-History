@@ -14,8 +14,15 @@ import {
   extractLinks,
   normalizeUrl,
   seasonBackfillUrls,
+  hasDataTable,
+  discoverSeasons,
 } from '../src/crawl.js';
-import { buildReport, buildCoverage, findThinPages } from '../src/report.js';
+import {
+  buildReport,
+  buildCoverage,
+  findThinPages,
+  summarizePage,
+} from '../src/report.js';
 
 test('parseCurl handles Chrome copy-as-cURL on mac/linux', () => {
   const blob = `curl 'https://myleague.football.cbssports.com/history/standings' \\
@@ -269,6 +276,93 @@ test('buildCoverage exposes per-season holes that totals hide', () => {
     !coverage.seasons.find((s) => s.year === '2014').has.includes('standings'),
     'a failed fetch was counted as coverage',
   );
+});
+
+test('hasDataTable tells a real page from a 200 with nothing in it', () => {
+  const real =
+    '<table><tr><th>Team</th></tr><tr><td>A</td></tr><tr><td>B</td></tr></table>';
+  const empty = '<p>No data available for this season.</p>';
+  // Layout scaffolding: a table, but not a data table.
+  const chrome = '<table><tr><td>nav</td></tr></table>';
+  assert.equal(hasDataTable(real), true);
+  assert.equal(hasDataTable(empty), false);
+  assert.equal(hasDataTable(chrome), false);
+});
+
+test('discoverSeasons ignores years that answered 200 with no data', () => {
+  const origin = 'https://x.football.cbssports.com';
+  const manifest = [
+    { ok: true, hasData: true, url: `${origin}/history/standings/2014` },
+    { ok: true, hasData: true, url: `${origin}/history/standings/2015` },
+    // CBS answers these, but they are not seasons.
+    { ok: true, hasData: false, url: `${origin}/history/standings/1996` },
+    { ok: true, hasData: false, url: `${origin}/history/standings/2041` },
+  ];
+  assert.deepEqual(discoverSeasons(manifest), [2014, 2015]);
+});
+
+test('backfill stops expanding once probes come back empty', async (t) => {
+  const { server, origin, seasons } = await startMockLeague();
+  t.after(() => server.close());
+
+  const outDir = mkdtempSync(join(tmpdir(), 'cbs-bounded-'));
+  t.after(() => rmSync(outDir, { recursive: true, force: true }));
+
+  const fetcher = new Fetcher({ cookie: 'mock_session=valid', userAgent: 't', delayMs: 0 });
+  const { manifest } = await crawl({ fetcher, leagueOrigin: origin, outDir, maxPages: 400 });
+
+  // The mock serves 200 for every year, so nothing here can 404 the crawler
+  // into stopping. It must stop because the pages come back empty.
+  const probed = new Set();
+  for (const entry of manifest) {
+    const match = entry.url.match(/\/history\/\w[\w-]*\/(\d{4})/);
+    if (match) probed.add(Number(match[1]));
+  }
+  const oldest = Math.min(...probed);
+  const newest = Math.max(...probed);
+  const first = Math.min(...seasons);
+  const last = Math.max(...seasons);
+
+  // Probing a couple of years past each edge is the mechanism working; running
+  // decades out is the bug this test exists for.
+  assert.ok(oldest >= first - 4, `probed back to ${oldest}, expected to stop near ${first}`);
+  assert.ok(newest <= last + 4, `probed forward to ${newest}, expected to stop near ${last}`);
+
+  // And the coverage grid must not claim seasons that returned nothing.
+  const { report } = buildReport(outDir);
+  const claimed = report.coverage.seasons.map((s) => Number(s.year));
+  for (const year of claimed) {
+    assert.ok(seasons.includes(year), `coverage claims ${year}, which the league never played`);
+  }
+});
+
+test('summarizePage finds the header past a single-cell banner row', () => {
+  // Shape of a real CBS draft table: a "ROUND 1" banner spanning the table,
+  // then the real header, then the picks. Reading row one as the header made
+  // this look like a one-column table and threw the whole thing away.
+  const rows = [
+    '<tr class="subtitle"><td colspan="3">ROUND 1</td></tr>',
+    '<tr class="label"><td>PICK</td><td>TEAM</td><td>PLAYER</td></tr>',
+  ];
+  for (let i = 1; i <= 14; i++) {
+    rows.push(`<tr class="row1"><td>${i}</td><td>Team ${i}</td><td>Player ${i}</td></tr>`);
+  }
+  const html = `<table class="data borderTop"><tbody>${rows.join('')}</tbody></table>`;
+
+  const summary = summarizePage(html, { url: 'https://x/draft/results', file: 'f' });
+  assert.equal(summary.tableCount, 1, 'draft table was discarded');
+  assert.deepEqual(summary.tables[0].headers, ['PICK', 'TEAM', 'PLAYER']);
+  assert.equal(summary.tables[0].rowCount, 16);
+  assert.equal(summary.tables[0].dataRows, 15, 'banner row must not count as a record');
+});
+
+test('summarizePage does not attribute a nested table rows to its parent', () => {
+  const inner = '<table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>';
+  const html = `<table><tbody><tr><td>${inner}</td></tr><tr><td>x</td></tr></tbody></table>`;
+  const summary = summarizePage(html, { url: 'https://x/', file: 'f' });
+  // The outer table is one-column layout scaffolding; only the inner is data.
+  assert.equal(summary.tableCount, 1);
+  assert.equal(summary.tables[0].rowCount, 2);
 });
 
 test('findThinPages flags pages that fetched fine but carry no data', () => {

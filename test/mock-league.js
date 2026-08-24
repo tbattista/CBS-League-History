@@ -121,7 +121,13 @@ function resolveRoute(pathname, search) {
   );
   if (pathSeason) {
     const [, kind, year] = pathSeason;
-    if (!SEASONS.includes(Number(year))) return null; // 404 outside the league's span
+    // CBS answers 200 for *any* year, including seasons the league never
+    // played -- full page chrome, no data table. It never 404s here, so a
+    // crawler that treats "fetched OK" as "season exists" will probe outward
+    // forever. Reproduce that exactly.
+    if (!SEASONS.includes(Number(year))) {
+      return page(`${year} Season`, '<p>No data available for this season.</p>');
+    }
     if (kind === 'champion') {
       return page(
         `${year} Champion`,
@@ -139,10 +145,12 @@ function resolveRoute(pathname, search) {
     return page(`${year} Standings`, standingsTable(year));
   }
 
-  const draftSeason = pathname.match(/^\/draft\/results\/(\d{4}):Pre-season:Pre-season$/);
+  const draftSeason = pathname.match(/^\/draft\/results\/(\d{4})(?::|$)/);
   if (draftSeason) {
     const year = draftSeason[1];
-    if (!SEASONS.includes(Number(year))) return null;
+    if (!SEASONS.includes(Number(year))) {
+      return page(`${year} Draft`, '<p>No draft available.</p>');
+    }
     return page(`${year} Draft Results`, draftTable(year));
   }
 

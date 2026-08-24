@@ -20,18 +20,44 @@ export function summarizePage(html, entry) {
   const tables = [];
   $('table').each((_, el) => {
     const $table = $(el);
-    const headers = $table
-      .find('tr')
-      .first()
-      .find('th, td')
+
+    // Direct rows only. CBS nests tables for layout, and counting descendant
+    // rows attributes a child table's contents to its parent.
+    const $rows = $table.find('> tbody > tr, > thead > tr, > tr');
+    const rowCount = $rows.length;
+    if (rowCount < 2) return; // single-row tables are layout scaffolding
+
+    // Direct child cells only, for the same reason as rows: a cell holding a
+    // nested table would otherwise contribute that table's cells to this one.
+    const cellsPerRow = $rows.map((_, row) => $(row).children('th, td').length).get();
+    const widest = Math.max(...cellsPerRow);
+    if (widest < 2) return; // a one-column table is not tabular data
+
+    /*
+     * Take the header from the first row that is as wide as the table, not
+     * simply the first row.
+     *
+     * CBS draft tables open with a single-cell "ROUND 1" banner before the real
+     * PICK | TEAM | PLAYER header. Treating row one as the header made those
+     * tables look like one-column junk and discarded them outright -- a 16-row
+     * draft table reported as no table at all, which is why draft results
+     * looked absent when they had in fact been archived correctly.
+     */
+    const headerIndex = cellsPerRow.findIndex((count) => count === widest);
+    const headers = $rows
+      .eq(headerIndex)
+      .children('th, td')
       .map((_, cell) => $(cell).text().trim().replace(/\s+/g, ' '))
       .get()
       .filter(Boolean);
-    const rowCount = $table.find('tr').length;
-    // Single-row tables are almost always layout scaffolding, not data.
-    if (rowCount > 1 && headers.length > 1) {
-      tables.push({ headers: headers.slice(0, 14), rowCount });
-    }
+
+    tables.push({
+      headers: headers.slice(0, 14),
+      rowCount,
+      columns: widest,
+      // Rows at full width are the actual records; banners and spacers are not.
+      dataRows: cellsPerRow.filter((count) => count === widest).length,
+    });
   });
 
   const bodyText = $('body').text();
@@ -72,29 +98,44 @@ export function summarizePage(html, entry) {
  * what happened on the first real run, and nothing in the totals showed it.
  * A per-season grid makes a hole impossible to miss.
  */
+/**
+ * `defines` marks the page types trusted to prove a season happened.
+ *
+ * Champion and awards pages render a fixed template -- every award slot the
+ * league has ever defined -- so they look populated for any year at all, 1996
+ * included. They are still worth reporting per season; they just cannot be the
+ * thing that decides which seasons exist.
+ */
 const SEASON_PAGE_KINDS = [
-  ['year-by-year', /\/history\/year-by-year\/(\d{4})$/],
-  ['standings', /\/history\/standings\/(\d{4})$/],
-  ['champion', /\/history\/champion\/(\d{4})$/],
-  ['awards', /\/history\/awards\/(\d{4})$/],
-  ['draft', /\/draft\/results\/(\d{4}):/],
+  ['year-by-year', /\/history\/year-by-year\/(\d{4})$/, { defines: true }],
+  ['standings', /\/history\/standings\/(\d{4})$/, { defines: true }],
+  ['champion', /\/history\/champion\/(\d{4})$/, { defines: false }],
+  ['awards', /\/history\/awards\/(\d{4})$/, { defines: false }],
+  ['draft', /\/draft\/results\/(\d{4}):/, { defines: false }],
 ];
 
 export function buildCoverage(manifest) {
   const bySeason = new Map();
+  const realSeasons = new Set();
 
   for (const entry of manifest) {
-    if (!entry.ok) continue;
-    for (const [kind, pattern] of SEASON_PAGE_KINDS) {
+    // A page that returned 200 but carried no data table is not coverage. CBS
+    // serves a normal-looking page for any year, so counting bare 200s here
+    // produced a grid claiming complete coverage of 1996-2041.
+    if (!entry.ok || entry.hasData === false) continue;
+    for (const [kind, pattern, opts] of SEASON_PAGE_KINDS) {
       const match = entry.url.match(pattern);
       if (!match) continue;
       const year = match[1];
       if (!bySeason.has(year)) bySeason.set(year, new Set());
       bySeason.get(year).add(kind);
+      if (opts.defines) realSeasons.add(year);
     }
   }
 
-  const seasons = [...bySeason.keys()].sort();
+  // Rows are the seasons the league actually played. Without this, a template
+  // page drags decades of phantom seasons into the grid.
+  const seasons = [...realSeasons].sort();
   const kinds = SEASON_PAGE_KINDS.map(([kind]) => kind);
 
   return {
@@ -123,13 +164,15 @@ export function findThinPages(pages) {
   return pages
     .filter((page) => {
       if (page.tableCount === 0) return false;
-      const biggest = Math.max(...page.tables.map((t) => t.rowCount));
+      // Count full-width rows, not every row: a banner and a header row are
+      // structure, not records.
+      const biggest = Math.max(...page.tables.map((t) => t.dataRows ?? t.rowCount));
       return biggest <= 2;
     })
     .map((page) => ({
       url: page.url,
       title: page.title,
-      largestTable: Math.max(...page.tables.map((t) => t.rowCount)),
+      largestTable: Math.max(...page.tables.map((t) => t.dataRows ?? t.rowCount)),
       headers: page.tables[0]?.headers ?? [],
     }));
 }

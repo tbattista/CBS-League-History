@@ -140,16 +140,52 @@ export const SEASON_URL_PATTERNS = [
   (year) => `/draft/results/${year}`,
 ];
 
-/** Years the crawl has evidence for, read back out of the URLs it archived. */
+/**
+ * Does this page actually contain data, as opposed to just returning 200?
+ *
+ * CBS serves a normal-looking page for *any* year in a season URL, including
+ * ones the league never played. /history/standings/1996 answers 200 with full
+ * site chrome and no data table at all. Status alone cannot tell a real season
+ * from a fabricated one.
+ */
+export function hasDataTable(html) {
+  const $ = cheerio.load(html);
+  let found = false;
+  $('table').each((_, el) => {
+    if (found) return;
+    if ($(el).find('tr').length > 2) found = true;
+  });
+  return found;
+}
+
+/**
+ * Years the crawl has evidence for.
+ *
+ * Evidence means a page that came back with data, not merely one that came back.
+ * Counting bare 200s here is what let an earlier version walk the backfill out
+ * to 1996-2041 for a league that started in 2012: every probe "succeeded", so
+ * the range never stopped expanding.
+ *
+ * Entries predating the hasData field are counted, so resuming an older
+ * manifest still behaves as it did before.
+ */
 export function discoverSeasons(manifest) {
   const years = new Set();
   for (const entry of manifest) {
-    if (!entry.ok) continue;
-    const match = entry.url.match(/\/history\/(?:year-by-year|standings|champion|awards)\/(\d{4})/);
+    if (!entry.ok || entry.hasData === false) continue;
+    // Only year-by-year and standings are trusted as proof a season happened.
+    // Champion and awards pages render a fixed template table -- every award
+    // slot the league has ever defined -- so they come back looking populated
+    // for 1996 as readily as for 2015, and cannot distinguish the two.
+    const match = entry.url.match(/\/history\/(?:year-by-year|standings)\/(\d{4})/);
     if (match) years.add(Number(match[1]));
   }
   return [...years].sort((a, b) => a - b);
 }
+
+/** Sanity bounds, so a probing bug can never run away again. */
+const EARLIEST_PLAUSIBLE_SEASON = 1990;
+const LATEST_PLAUSIBLE_SEASON = new Date().getFullYear() + 1;
 
 /**
  * Fill in the seasons the link graph does not reach.
@@ -163,8 +199,8 @@ export function seasonBackfillUrls(manifest, leagueOrigin, padding = 2) {
   const seasons = discoverSeasons(manifest);
   if (seasons.length === 0) return [];
 
-  const first = seasons[0] - padding;
-  const last = seasons[seasons.length - 1] + padding;
+  const first = Math.max(seasons[0] - padding, EARLIEST_PLAUSIBLE_SEASON);
+  const last = Math.min(seasons[seasons.length - 1] + padding, LATEST_PLAUSIBLE_SEASON);
 
   const urls = [];
   for (let year = first; year <= last; year++) {
@@ -284,6 +320,7 @@ export async function crawl({
         mkdirSync(dirname(filePath), { recursive: true });
         writeFileSync(filePath, result.body, 'utf8');
         entry.file = join('raw', fileName);
+        entry.hasData = hasDataTable(result.body);
 
         if (followLinks) {
           for (const link of extractLinks(result.body, url)) {
