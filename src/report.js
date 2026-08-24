@@ -214,10 +214,16 @@ export function buildReport(dataDir) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   const pages = [];
 
+  const missing = [];
   for (const entry of manifest) {
     if (!entry.ok || !entry.file) continue;
-    const filePath = join(dataDir, entry.file);
-    if (!existsSync(filePath)) continue;
+    // Manifests written on Windows before the POSIX fix carry "raw\name.html".
+    // Accept either separator so an existing archive stays readable anywhere.
+    const filePath = join(dataDir, ...entry.file.split(/[\\/]/));
+    if (!existsSync(filePath)) {
+      missing.push(entry.file);
+      continue;
+    }
     pages.push(summarizePage(readFileSync(filePath, 'utf8'), entry));
   }
 
@@ -237,6 +243,7 @@ export function buildReport(dataDir) {
       error: f.error,
     })),
     seasonsDetected: [...allYears].sort(),
+    missingFiles: missing,
     coverage: buildCoverage(manifest, hasDataByUrl(pages)),
     thinPages: findThinPages(pages),
     pages,
@@ -264,6 +271,23 @@ export function printReport(report) {
     }`,
   );
   console.log(line);
+
+  /*
+   * The manifest listing files that are not on disk is a broken archive, not a
+   * detail. It happened for real: manifests written on Windows recorded
+   * "raw\name.html", which on Linux is one long filename rather than a path, so
+   * every page silently failed to load and the report printed zeros while still
+   * rendering a confident-looking coverage grid off the manifest alone.
+   */
+  if (report.missingFiles?.length) {
+    console.log(
+      `\nWARNING: ${report.missingFiles.length} of ${report.pagesCrawled} manifest\n` +
+        `entries point at files that are not on disk. The archive is incomplete\n` +
+        `or the manifest paths do not match this filesystem. Examples:\n`,
+    );
+    for (const file of report.missingFiles.slice(0, 5)) console.log(`  ${file}`);
+    console.log(`\n${line}`);
+  }
 
   // Season coverage grid -- the completeness check.
   const coverage = report.coverage;

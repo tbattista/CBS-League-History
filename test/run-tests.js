@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync,
+  rmSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -367,6 +374,57 @@ test('summarizePage does not attribute a nested table rows to its parent', () =>
   // The outer table is one-column layout scaffolding; only the inner is data.
   assert.equal(summary.tableCount, 1);
   assert.equal(summary.tables[0].rowCount, 2);
+});
+
+test('buildReport reads a manifest written with Windows path separators', (t) => {
+  // The archive is committed and shared, so a manifest written on one OS gets
+  // read on another. path.join() writes "raw\name.html" on Windows; on Linux
+  // that backslash is an ordinary filename character, so every page silently
+  // failed to load while the report still printed a confident coverage grid.
+  const dir = mkdtempSync(join(tmpdir(), 'cbs-winpath-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const rows = ['<tr><td>Finish</td><td>Team</td></tr>'];
+  for (let i = 1; i <= 5; i++) rows.push(`<tr><td>${i}</td><td>Team ${i}</td></tr>`);
+  const html = `<table><tbody>${rows.join('')}</tbody></table>`;
+
+  mkdirSync(join(dir, 'raw'), { recursive: true });
+  writeFileSync(join(dir, 'raw', 'standings.html'), html, 'utf8');
+  writeFileSync(
+    join(dir, 'manifest.json'),
+    JSON.stringify([
+      {
+        url: 'https://x.football.cbssports.com/history/standings/2015',
+        ok: true,
+        status: 200,
+        file: 'raw\\standings.html', // as Windows wrote it
+      },
+    ]),
+    'utf8',
+  );
+
+  const { report } = buildReport(dir);
+  assert.equal(report.pagesArchived, 1, 'backslash path was not resolved');
+  assert.equal(report.missingFiles.length, 0);
+  assert.ok(report.coverage.seasons.some((s) => s.year === '2015'));
+});
+
+test('buildReport reports manifest entries whose files are absent', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'cbs-missing-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  mkdirSync(join(dir, 'raw'), { recursive: true });
+  writeFileSync(
+    join(dir, 'manifest.json'),
+    JSON.stringify([
+      { url: 'https://x/a', ok: true, status: 200, file: 'raw/gone.html' },
+    ]),
+    'utf8',
+  );
+
+  const { report } = buildReport(dir);
+  assert.equal(report.pagesArchived, 0);
+  assert.deepEqual(report.missingFiles, ['raw/gone.html'], 'absence must be reported, not silent');
 });
 
 test('findThinPages flags pages that fetched fine but carry no data', () => {

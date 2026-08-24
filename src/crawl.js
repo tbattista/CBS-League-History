@@ -330,7 +330,11 @@ export async function crawl({
         const filePath = join(rawDir, fileName);
         mkdirSync(dirname(filePath), { recursive: true });
         writeFileSync(filePath, result.body, 'utf8');
-        entry.file = join('raw', fileName);
+        // Always POSIX separators in the manifest. path.join() would write
+        // "raw\name.html" on Windows, and that manifest gets committed and read
+        // back on Linux -- where the backslash is an ordinary filename
+        // character, so every lookup misses and the archive reads as empty.
+        entry.file = `raw/${fileName}`;
         entry.hasData = hasDataTable(result.body);
 
         if (followLinks) {
