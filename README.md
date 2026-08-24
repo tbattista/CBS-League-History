@@ -77,7 +77,7 @@ hundred requests.
 npm run crawl
 ```
 
-Flags: `--max-pages=N` (default 500), `--delay=MS` (default 1000),
+Flags: `--max-pages=N` (default 1500), `--delay=MS` (default 1000),
 `--force` (re-fetch instead of resuming).
 
 Output lands in `data/`:
@@ -93,15 +93,38 @@ data/
 
 ## How the crawler finds pages
 
-It doesn't guess URLs. It starts from a handful of seeds and follows the
-league's own navigation, so whatever CBS links to is what gets archived.
+Two passes.
 
-This matters for an old league. CBS's URL scheme has changed over the years, and
-a 12–14 season league likely spans more than one generation of it. Hardcoded URL
-patterns would silently miss entire seasons — and a backup with a hole in it
-still looks complete, which is the worst failure mode available here.
+**Pass 1 follows the league's own navigation** from a handful of seeds, so
+whatever CBS links to gets archived. No URL guessing.
 
-Some deliberate behaviours worth knowing:
+**Pass 2 backfills by season.** Following links alone is not enough: older
+seasons drop out of the navigation over time. Once pass 1 has found any season
+page, the URL shape is known and seasons are just integers, so the rest can be
+enumerated directly. The span walks outward until a round finds nothing new,
+rather than being guessed up front.
+
+This two-pass split came out of a real first run. It archived 500 pages with
+zero failures and still had `year-by-year` for all 14 seasons but `standings`
+for only the most recent 5 — the older seasons simply weren't linked anywhere.
+Nothing in the totals showed it, which is why the report now prints a
+per-season grid.
+
+**Two filters keep the budget on actual history.** That same run spent 240 of
+its 500 pages on nothing useful:
+
+- **Sort permutations** (178 pages). CBS puts sort links on every table, and
+  each is a distinct URL serving identical data — 32 copies of one page. Sort
+  and pagination parameters are now stripped during URL normalization, so each
+  table collapses to one canonical fetch.
+- **Editorial and admin sections** (92 pages). News articles, mock drafts,
+  draft-central advice, current-season player stats, commissioner settings —
+  all linked from league nav, none of it league history. Now excluded by
+  section. `/setup/` is excluded doubly: those pages administer the league
+  (add year, remove years, manage teams), and while the archiver only ever
+  issues GETs, it has no business near them.
+
+Other deliberate behaviours worth knowing:
 
 - **It never follows `/logout`.** Ending your own session mid-crawl would be an
   annoying way to lose a run.
@@ -120,11 +143,25 @@ Some deliberate behaviours worth knowing:
 ## Reading the results
 
 `npm run crawl` prints a structural summary at the end, and `npm run report`
-regenerates it without re-fetching. It lists every page containing data tables,
-with their column headers and row counts.
+regenerates it without re-fetching.
 
-That summary is what phase 2's parsers get written against — it describes the
-shape of your league's pages without anyone shipping megabytes of HTML around.
+First is the **per-season coverage grid** — the completeness check:
+
+```
+                 12 13 14 15 16 17 18 19 20 21 22 23 24 25
+  year-by-year    y  y  y  y  y  y  y  y  y  y  y  y  y  y
+  standings       .  .  .  .  .  .  .  .  .  y  y  y  y  y
+  champion        .  .  .  .  .  .  .  .  y  y  y  y  y  y
+```
+
+A `.` is not automatically a problem — CBS may have no such page for that
+season. It *is* a problem when a season you remember is blank across the board.
+Check this before trusting the archive.
+
+Then a list of every page containing data tables, with column headers and row
+counts. That part is what phase 2's parsers get written against — it describes
+the shape of your league's pages without anyone shipping megabytes of HTML
+around.
 
 ## Tests
 
@@ -132,10 +169,12 @@ shape of your league's pages without anyone shipping megabytes of HTML around.
 npm test
 ```
 
-14 tests, covering cURL parsing across platforms, cookie redaction, login-wall
-detection, crawl-scope rules, filename safety, and a full end-to-end crawl
-against a mock CBS league that reproduces the real site's cookie gating and
-link-only season discovery.
+20 tests, covering cURL parsing across platforms (including Windows cmd
+percent-escaping), cookie redaction, login-wall detection, crawl-scope rules,
+sort-permutation collapsing, season backfill, coverage gap detection, filename
+safety, and a full end-to-end crawl against a mock CBS league that reproduces
+the real site's cookie gating, sort links, editorial noise, and — importantly —
+older seasons reachable only by URL, never by link.
 
 ## Deployment
 

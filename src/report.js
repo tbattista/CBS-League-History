@@ -64,6 +64,49 @@ export function summarizePage(html, entry) {
   };
 }
 
+/**
+ * Which per-season pages exist for which seasons.
+ *
+ * This is the completeness check. A crawl can report 500 pages archived and
+ * zero failures while still missing eight of fifteen seasons -- that is exactly
+ * what happened on the first real run, and nothing in the totals showed it.
+ * A per-season grid makes a hole impossible to miss.
+ */
+const SEASON_PAGE_KINDS = [
+  ['year-by-year', /\/history\/year-by-year\/(\d{4})$/],
+  ['standings', /\/history\/standings\/(\d{4})$/],
+  ['champion', /\/history\/champion\/(\d{4})$/],
+  ['awards', /\/history\/awards\/(\d{4})$/],
+  ['draft', /\/draft\/results\/(\d{4}):/],
+];
+
+export function buildCoverage(manifest) {
+  const bySeason = new Map();
+
+  for (const entry of manifest) {
+    if (!entry.ok) continue;
+    for (const [kind, pattern] of SEASON_PAGE_KINDS) {
+      const match = entry.url.match(pattern);
+      if (!match) continue;
+      const year = match[1];
+      if (!bySeason.has(year)) bySeason.set(year, new Set());
+      bySeason.get(year).add(kind);
+    }
+  }
+
+  const seasons = [...bySeason.keys()].sort();
+  const kinds = SEASON_PAGE_KINDS.map(([kind]) => kind);
+
+  return {
+    kinds,
+    seasons: seasons.map((year) => ({
+      year,
+      has: kinds.filter((kind) => bySeason.get(year).has(kind)),
+      missing: kinds.filter((kind) => !bySeason.get(year).has(kind)),
+    })),
+  };
+}
+
 export function buildReport(dataDir) {
   const manifestPath = join(dataDir, 'manifest.json');
   if (!existsSync(manifestPath)) {
@@ -96,6 +139,7 @@ export function buildReport(dataDir) {
       error: f.error,
     })),
     seasonsDetected: [...allYears].sort(),
+    coverage: buildCoverage(manifest),
     pages,
   };
 
@@ -121,6 +165,34 @@ export function printReport(report) {
     }`,
   );
   console.log(line);
+
+  // Season coverage grid -- the completeness check.
+  const coverage = report.coverage;
+  if (coverage && coverage.seasons.length) {
+    const width = Math.max(...coverage.kinds.map((k) => k.length));
+    console.log(`\nPer-season coverage:\n`);
+    console.log(`  ${' '.repeat(width)}  ${coverage.seasons.map((s) => s.year.slice(2)).join(' ')}`);
+    for (const kind of coverage.kinds) {
+      const cells = coverage.seasons.map((s) => (s.has.includes(kind) ? ' y' : ' .'));
+      console.log(`  ${kind.padEnd(width)} ${cells.join('')}`);
+    }
+
+    const holes = coverage.seasons.filter((s) => s.missing.length);
+    if (holes.length) {
+      console.log(`\n  Gaps ( . above ):`);
+      for (const season of holes) {
+        console.log(`    ${season.year}: missing ${season.missing.join(', ')}`);
+      }
+      console.log(
+        `\n  A gap is not necessarily a problem -- CBS may simply have no such\n` +
+          `  page for that season. It is a problem if a season you remember is\n` +
+          `  blank across the board.`,
+      );
+    } else {
+      console.log(`\n  Complete: every season has every page type.`);
+    }
+    console.log(`\n${line}`);
+  }
 
   const withTables = report.pages
     .filter((p) => p.tableCount > 0)

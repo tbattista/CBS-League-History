@@ -51,7 +51,7 @@ async function commandCheck() {
 
 async function commandCrawl(flags) {
   const { cookie, userAgent, leagueUrl } = loadAuth();
-  const maxPages = Number(flags['max-pages'] ?? 500);
+  const maxPages = Number(flags['max-pages'] ?? 1500);
   const delayMs = Number(flags.delay ?? 1000);
   const force = Boolean(flags.force);
   const dir = outputDir();
@@ -113,7 +113,7 @@ if (!commands[command]) {
       `  npm run crawl                 Archive the full league history\n` +
       `  npm run report                Re-summarize what was archived\n\n` +
       `Crawl flags:\n` +
-      `  --max-pages=N   page cap (default 500)\n` +
+      `  --max-pages=N   page cap (default 1500)\n` +
       `  --delay=MS      delay between requests (default 1000)\n` +
       `  --force         re-fetch everything instead of resuming\n`,
   );

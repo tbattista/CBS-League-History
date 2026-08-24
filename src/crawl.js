@@ -16,13 +16,23 @@ import { dirname, join, resolve } from 'node:path';
  * Whatever CBS links to is, by definition, the real structure.
  */
 
-const SEED_PATHS = ['/', '/history', '/history/standings', '/standings', '/draft'];
+const SEED_PATHS = [
+  '/',
+  '/history',
+  '/history/year-by-year',
+  '/history/standings',
+  '/history/record-book',
+  '/history/team-overview',
+  '/standings',
+  '/draft/results',
+  '/transactions',
+];
 
 /** Paths worth following. Broad on purpose -- easier to filter noise later than to re-crawl. */
 const RELEVANT = [
   'history', 'standings', 'draft', 'playoff', 'postseason', 'champion',
   'schedule', 'results', 'scoring', 'matchup', 'transaction', 'record',
-  'season', 'archive', 'stats', 'team', 'owner', 'trade', 'keeper',
+  'season', 'archive', 'team', 'owner', 'trade', 'keeper', 'award',
 ];
 
 /** Never follow. Logout would end the session mid-crawl, which is worth being careful about. */
@@ -31,6 +41,38 @@ const FORBIDDEN = [
   'support', 'privacy', 'terms', 'advertise', 'feedback', 'print',
   'facebook.com', 'twitter.com', 'x.com', 'instagram.com', 'youtube.com',
 ];
+
+/**
+ * Whole sections that are not league history.
+ *
+ * A first full run against a real 15-season league spent 92 of its 500 pages
+ * on these: CBS's own editorial and draft-prep content, current-season player
+ * stat screens, and commissioner settings forms. They are linked from league
+ * navigation, so a link-following crawler walks straight into them, and the
+ * budget they consume comes straight out of the seasons we came for.
+ *
+ * /setup/ is excluded for a second reason: those pages administer the league
+ * (add year, remove years, manage teams). We only ever issue GETs, but there is
+ * no reason to have the archiver anywhere near them.
+ */
+const EXCLUDED_SECTIONS = [
+  '/news/', '/draft-central', '/mockdraft', '/setup/', '/stats',
+  '/scoring/live', '/roster-report', '/scout-team', '/trade-block',
+  '/content/', '/advice',
+];
+
+/**
+ * Query parameters that re-render a page without changing what it says.
+ *
+ * CBS puts sort links on every table, and each one is a distinct URL serving
+ * identical data. On the first real run these produced 178 of 500 pages --
+ * 32 copies of one year-by-year page alone. Stripping them collapses each
+ * table back to a single canonical fetch.
+ *
+ * The names are prefixed per-table (leagueRecordsTable:sort_col, and so on),
+ * so match on the suffix rather than the whole name.
+ */
+const VOLATILE_PARAMS = /(^|:)(sort_col|sort_dir|start_row|presentation|action|want_deleted|default_add)$/i;
 
 export function normalizeUrl(input, base) {
   let url;
@@ -41,6 +83,13 @@ export function normalizeUrl(input, base) {
   }
   if (!['http:', 'https:'].includes(url.protocol)) return null;
   url.hash = '';
+
+  for (const name of [...url.searchParams.keys()]) {
+    if (VOLATILE_PARAMS.test(name)) url.searchParams.delete(name);
+  }
+  // Keep the canonical form stable: "?" alone and "?a=1" must not both appear.
+  url.search = url.searchParams.toString();
+
   return url.toString();
 }
 
@@ -58,8 +107,63 @@ export function shouldFollow(urlString, leagueOrigin) {
 
   const haystack = `${url.pathname}${url.search}`.toLowerCase();
   if (FORBIDDEN.some((term) => haystack.includes(term))) return false;
-  if (url.pathname === '/' ) return true;
+  if (EXCLUDED_SECTIONS.some((term) => haystack.includes(term))) return false;
+  if (url.pathname === '/') return true;
   return RELEVANT.some((term) => haystack.includes(term));
+}
+
+/**
+ * Per-season pages, keyed directly by year.
+ *
+ * Confirmed against a real league rather than guessed. These exist for every
+ * season whether or not the league's navigation still links to them -- older
+ * seasons in particular are reachable by URL but buried or absent in the nav,
+ * which is exactly how the first run ended up with 2021-2025 standings and
+ * nothing before that.
+ */
+export const SEASON_URL_PATTERNS = [
+  (year) => `/history/year-by-year/${year}`,
+  (year) => `/history/standings/${year}`,
+  (year) => `/history/champion/${year}`,
+  (year) => `/history/awards/${year}`,
+  (year) => `/history/team-overview/${year}`,
+  (year) => `/draft/results/${year}:Pre-season:Pre-season`,
+];
+
+/** Years the crawl has evidence for, read back out of the URLs it archived. */
+export function discoverSeasons(manifest) {
+  const years = new Set();
+  for (const entry of manifest) {
+    if (!entry.ok) continue;
+    const match = entry.url.match(/\/history\/(?:year-by-year|standings|champion|awards)\/(\d{4})/);
+    if (match) years.add(Number(match[1]));
+  }
+  return [...years].sort((a, b) => a - b);
+}
+
+/**
+ * Fill in the seasons the link graph does not reach.
+ *
+ * Once any season page is found we know the URL shape, and seasons are just
+ * integers -- so the full span can be enumerated directly instead of hoping
+ * CBS still links to 2012. The span is extended one year past the oldest and
+ * newest seen, to catch a boundary season that nothing links to.
+ */
+export function seasonBackfillUrls(manifest, leagueOrigin, padding = 2) {
+  const seasons = discoverSeasons(manifest);
+  if (seasons.length === 0) return [];
+
+  const first = seasons[0] - padding;
+  const last = seasons[seasons.length - 1] + padding;
+
+  const urls = [];
+  for (let year = first; year <= last; year++) {
+    for (const pattern of SEASON_URL_PATTERNS) {
+      const url = normalizeUrl(pattern(year), leagueOrigin);
+      if (url) urls.push(url);
+    }
+  }
+  return urls;
 }
 
 /** Stable, readable, collision-free filename for a URL. */
@@ -104,7 +208,7 @@ export async function crawl({
   fetcher,
   leagueOrigin,
   outDir,
-  maxPages = 500,
+  maxPages = 1500,
   force = false,
   onProgress = () => {},
 }) {
@@ -121,63 +225,102 @@ export async function crawl({
 
   let loginWallHits = 0;
 
-  while (queue.length > 0 && manifest.length < maxPages) {
-    const url = queue.shift();
-    if (done.has(url)) continue;
+  /**
+   * Drain the queue, optionally following links out of each page.
+   *
+   * The backfill pass sets followLinks false: those URLs are already known to
+   * be the ones we want, and re-harvesting their links would just re-enqueue
+   * the same navigation the first pass already walked.
+   */
+  async function drain({ followLinks, phase }) {
+    while (queue.length > 0 && manifest.length < maxPages) {
+      const url = queue.shift();
+      if (done.has(url)) continue;
 
-    const result = await fetcher.get(url);
-    done.add(url);
+      const result = await fetcher.get(url);
+      done.add(url);
 
-    if (result.isLoginWall) {
-      loginWallHits++;
-      // One redirect could be a stray unauthenticated path. Several in a row
-      // means the cookie is dead, and continuing would just archive login pages.
-      if (loginWallHits >= 3) {
-        throw new Error(
-          'Session rejected: CBS redirected us to the login page repeatedly.\n' +
-            'The cookie in curl.txt has almost certainly expired. Re-copy it ' +
-            'from a freshly loaded league page and run again.',
-        );
+      if (result.isLoginWall) {
+        loginWallHits++;
+        // One redirect could be a stray unauthenticated path. Several in a row
+        // means the cookie is dead, and continuing would just archive login pages.
+        if (loginWallHits >= 3) {
+          throw new Error(
+            'Session rejected: CBS redirected us to the login page repeatedly.\n' +
+              'The cookie in curl.txt has almost certainly expired. Re-copy it ' +
+              'from a freshly loaded league page and run again.',
+          );
+        }
+      } else if (result.ok) {
+        loginWallHits = 0;
       }
-    } else if (result.ok) {
-      loginWallHits = 0;
-    }
 
-    const entry = {
-      url,
-      finalUrl: result.finalUrl,
-      status: result.status,
-      ok: result.ok && !result.isLoginWall,
-      isLoginWall: result.isLoginWall,
-      bytes: result.body.length,
-      fetchedAt: new Date().toISOString(),
-      file: null,
-      error: result.error ?? null,
-    };
+      const entry = {
+        url,
+        finalUrl: result.finalUrl,
+        status: result.status,
+        ok: result.ok && !result.isLoginWall,
+        isLoginWall: result.isLoginWall,
+        bytes: result.body.length,
+        fetchedAt: new Date().toISOString(),
+        file: null,
+        phase,
+        error: result.error ?? null,
+      };
 
-    if (entry.ok && result.body) {
-      const fileName = fileNameFor(url);
-      const filePath = join(rawDir, fileName);
-      mkdirSync(dirname(filePath), { recursive: true });
-      writeFileSync(filePath, result.body, 'utf8');
-      entry.file = join('raw', fileName);
+      if (entry.ok && result.body) {
+        const fileName = fileNameFor(url);
+        const filePath = join(rawDir, fileName);
+        mkdirSync(dirname(filePath), { recursive: true });
+        writeFileSync(filePath, result.body, 'utf8');
+        entry.file = join('raw', fileName);
 
-      for (const link of extractLinks(result.body, url)) {
-        if (!queued.has(link) && !done.has(link) && shouldFollow(link, leagueOrigin)) {
-          queued.add(link);
-          queue.push(link);
+        if (followLinks) {
+          for (const link of extractLinks(result.body, url)) {
+            if (!queued.has(link) && !done.has(link) && shouldFollow(link, leagueOrigin)) {
+              queued.add(link);
+              queue.push(link);
+            }
+          }
         }
       }
-    }
 
-    manifest.push(entry);
-    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
-    onProgress(entry, { done: manifest.length, pending: queue.length });
+      manifest.push(entry);
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+      onProgress(entry, { done: manifest.length, pending: queue.length, phase });
+    }
+  }
+
+  await drain({ followLinks: true, phase: 'crawl' });
+
+  // Second pass: seasons the navigation never linked to. Older seasons drop out
+  // of the nav over time, so following links alone reliably misses them.
+  //
+  // Repeat until a round finds nothing new. Each round re-derives the span from
+  // everything archived so far, so discovering an older season automatically
+  // reaches further back on the next round -- the range walks outward on its
+  // own instead of being guessed up front.
+  let backfillCount = 0;
+  for (let round = 0; round < 8; round++) {
+    const backfill = seasonBackfillUrls(manifest, leagueOrigin).filter(
+      (url) => !done.has(url) && !queued.has(url),
+    );
+    if (backfill.length === 0) break;
+
+    backfillCount += backfill.length;
+    for (const url of backfill) {
+      queued.add(url);
+      queue.push(url);
+    }
+    await drain({ followLinks: false, phase: 'backfill' });
+    if (manifest.length >= maxPages) break;
   }
 
   return {
     manifest,
     manifestPath,
+    seasons: discoverSeasons(manifest),
+    backfillAttempted: backfillCount,
     truncated: queue.length > 0,
     remaining: queue.length,
   };

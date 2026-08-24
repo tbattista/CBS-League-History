@@ -7,8 +7,15 @@ import { join } from 'node:path';
 import { startMockLeague } from './mock-league.js';
 import { parseCurl, normalizeLeagueUrl, redact } from '../src/auth.js';
 import { Fetcher, looksLikeLogin } from '../src/http.js';
-import { crawl, shouldFollow, fileNameFor, extractLinks, normalizeUrl } from '../src/crawl.js';
-import { buildReport } from '../src/report.js';
+import {
+  crawl,
+  shouldFollow,
+  fileNameFor,
+  extractLinks,
+  normalizeUrl,
+  seasonBackfillUrls,
+} from '../src/crawl.js';
+import { buildReport, buildCoverage } from '../src/report.js';
 
 test('parseCurl handles Chrome copy-as-cURL on mac/linux', () => {
   const blob = `curl 'https://myleague.football.cbssports.com/history/standings' \\
@@ -111,6 +118,45 @@ test('normalizeUrl rejects javascript: and mailto: hrefs', () => {
 
 // --- End-to-end against the mock league ------------------------------------
 
+test('normalizeUrl collapses sort permutations to one canonical URL', () => {
+  const base = 'https://x.football.cbssports.com/';
+  const a = normalizeUrl('/history?allTimeStandingsTable:sort_col=PF&allTimeStandingsTable:sort_dir=DESC', base);
+  const b = normalizeUrl('/history?allTimeStandingsTable:sort_col=W&allTimeStandingsTable:sort_dir=ASC', base);
+  const plain = normalizeUrl('/history', base);
+  assert.equal(a, plain, 'sort params must not create a distinct URL');
+  assert.equal(b, plain);
+  // A meaningful parameter must survive.
+  assert.ok(normalizeUrl('/history/draft?season=2014', base).includes('season=2014'));
+});
+
+test('shouldFollow skips editorial and admin sections', () => {
+  const origin = 'https://x.football.cbssports.com';
+  for (const path of [
+    '/news/2026-fantasy-football-draft-prep',
+    '/draft-central/draft-research',
+    '/mockdraft/standard',
+    '/setup/commish-tools/manage-teams-managers',
+    '/stats/stats-main',
+  ]) {
+    assert.ok(!shouldFollow(`${origin}${path}`, origin), `should not follow ${path}`);
+  }
+  // League history must still be followed.
+  assert.ok(shouldFollow(`${origin}/history/year-by-year/2012`, origin));
+  assert.ok(shouldFollow(`${origin}/history/awards/2013`, origin));
+});
+
+test('seasonBackfillUrls walks outward from the seasons already seen', () => {
+  const origin = 'https://x.football.cbssports.com';
+  const manifest = [{ ok: true, url: `${origin}/history/year-by-year/2015` }];
+  const urls = seasonBackfillUrls(manifest, origin);
+  // padding 2 either side of a single known season
+  for (const year of [2013, 2014, 2015, 2016, 2017]) {
+    assert.ok(urls.some((u) => u.endsWith(`/history/standings/${year}`)), `no standings for ${year}`);
+  }
+  assert.ok(urls.some((u) => u.includes('/draft/results/2015:Pre-season:Pre-season')));
+  assert.equal(seasonBackfillUrls([], origin).length, 0, 'nothing known, nothing to backfill');
+});
+
 test('crawl discovers every season by following links, and reports on them', async (t) => {
   const { server, origin, seasons } = await startMockLeague();
   t.after(() => server.close());
@@ -124,22 +170,49 @@ test('crawl discovers every season by following links, and reports on them', asy
     delayMs: 0,
   });
 
-  const { manifest } = await crawl({ fetcher, leagueOrigin: origin, outDir, maxPages: 100 });
+  const { manifest } = await crawl({ fetcher, leagueOrigin: origin, outDir, maxPages: 200 });
 
   const archived = manifest.filter((e) => e.ok);
   const archivedUrls = archived.map((e) => e.url);
 
-  // The crawler was never told these URLs exist -- it had to find them.
+  // Every season, including the older ones nothing links to. The mock links
+  // only the two most recent -- the rest must come from the backfill pass.
   for (const season of seasons) {
     assert.ok(
-      archivedUrls.some((u) => u.includes(`/history/standings?season=${season}`)),
-      `missing ${season} standings`,
+      archivedUrls.some((u) => u.endsWith(`/history/year-by-year/${season}`)),
+      `missing ${season} year-by-year`,
     );
     assert.ok(
-      archivedUrls.some((u) => u.includes(`/history/draft?season=${season}`)),
-      `missing ${season} draft`,
+      archivedUrls.some((u) => u.endsWith(`/history/champion/${season}`)),
+      `missing ${season} champion`,
+    );
+    assert.ok(
+      archivedUrls.some((u) => u.includes(`/draft/results/${season}:Pre-season:Pre-season`)),
+      `missing ${season} draft results`,
     );
   }
+
+  const unlinked = seasons.slice(0, -2);
+  assert.ok(unlinked.length > 0, 'mock must keep some seasons unlinked to be a real test');
+  for (const season of unlinked) {
+    const entry = archived.find((e) => e.url.endsWith(`/history/champion/${season}`));
+    assert.equal(entry.phase, 'backfill', `${season} should have come from backfill`);
+  }
+
+  // Sort permutations must not appear as separate archived pages.
+  assert.ok(
+    !archivedUrls.some((u) => /sort_col|sort_dir/.test(u)),
+    'sort permutations were archived as distinct pages',
+  );
+
+  // Editorial and admin sections must not be fetched at all.
+  for (const noise of ['/news/', '/draft-central', '/setup/', '/stats']) {
+    assert.ok(
+      !manifest.some((e) => e.url.includes(noise)),
+      `crawler fetched excluded section ${noise}`,
+    );
+  }
+
   assert.ok(archivedUrls.some((u) => u.endsWith('/history/champions')), 'missing champions page');
 
   // Excluded links must not have been fetched at all.
@@ -162,12 +235,40 @@ test('crawl discovers every season by following links, and reports on them', asy
     assert.ok(report.seasonsDetected.includes(String(season)), `report missed ${season}`);
   }
 
-  const standings = report.pages.find((p) => p.url.includes('standings?season=2012'));
+  // 2012 is one of the seasons nothing links to -- it is in the report only
+  // because the backfill pass went and got it.
+  const standings = report.pages.find((p) => p.url.endsWith('/history/standings/2012'));
   assert.ok(standings, 'no 2012 standings page in report');
   assert.deepEqual(standings.tables[0].headers, [
     'Rank', 'Team', 'Owner', 'W', 'L', 'Points For',
   ]);
   assert.equal(standings.tables[0].rowCount, 5, 'header row + 4 teams');
+});
+
+test('buildCoverage exposes per-season holes that totals hide', () => {
+  const origin = 'https://x.football.cbssports.com';
+  // Shaped after a real first run: complete year-by-year, but standings and
+  // draft only for recent seasons. Totals looked fine; eight seasons were bare.
+  const manifest = [];
+  for (const year of [2012, 2013, 2014, 2015]) {
+    manifest.push({ ok: true, url: `${origin}/history/year-by-year/${year}` });
+  }
+  manifest.push({ ok: true, url: `${origin}/history/standings/2015` });
+  manifest.push({ ok: true, url: `${origin}/draft/results/2015:Pre-season:Pre-season` });
+  // A failed fetch must not count as coverage.
+  manifest.push({ ok: false, url: `${origin}/history/standings/2014` });
+
+  const coverage = buildCoverage(manifest);
+  const year2015 = coverage.seasons.find((s) => s.year === '2015');
+  const year2012 = coverage.seasons.find((s) => s.year === '2012');
+
+  assert.deepEqual(year2015.missing, ['champion', 'awards']);
+  assert.deepEqual(year2012.has, ['year-by-year']);
+  assert.ok(year2012.missing.includes('standings'));
+  assert.ok(
+    !coverage.seasons.find((s) => s.year === '2014').has.includes('standings'),
+    'a failed fetch was counted as coverage',
+  );
 });
 
 test('crawl aborts loudly when the session cookie is dead', async (t) => {

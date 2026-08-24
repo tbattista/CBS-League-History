@@ -56,18 +56,36 @@ const ROUTES = {
       </ul>`,
     ),
 
+  // Only the two most recent seasons are linked. The older ones exist but are
+  // reachable by URL alone -- the same way a real league drops old seasons out
+  // of its navigation, which is what defeats a purely link-following crawler.
   '/history': () =>
     page(
       'League History',
       `<ul>
-        ${SEASONS.map(
-          (s) =>
-            `<li><a href="/history/standings?season=${s}">${s} Standings</a> &middot;
-             <a href="/history/draft?season=${s}">${s} Draft</a></li>`,
-        ).join('\n        ')}
+        ${SEASONS.slice(-2)
+          .map(
+            (s) =>
+              `<li><a href="/history/year-by-year/${s}">${s}</a> &middot;
+               <a href="/history/standings?season=${s}">${s} Standings</a> &middot;
+               <a href="/history/draft?season=${s}">${s} Draft</a></li>`,
+          )
+          .join('\n        ')}
       </ul>
       <p><a href="/history/champions">Champions</a></p>
-      <p><a href="/history/missing-page">Broken Link</a></p>`,
+      <p><a href="/history/missing-page">Broken Link</a></p>
+      <!-- Sort links: same data, different order. Must collapse to one fetch. -->
+      <p>
+        <a href="/history?allTimeStandingsTable:sort_col=PF&allTimeStandingsTable:sort_dir=DESC">Sort by PF</a>
+        <a href="/history?allTimeStandingsTable:sort_col=W&allTimeStandingsTable:sort_dir=ASC">Sort by W</a>
+      </p>
+      <!-- Editorial and admin sections: linked from league nav, not league history. -->
+      <p>
+        <a href="/news/2026-fantasy-football-draft-prep">Draft Prep</a>
+        <a href="/draft-central/draft-research">Draft Research</a>
+        <a href="/setup/commish-tools/manage-teams-managers">Manage Teams</a>
+        <a href="/stats/stats-main">Player Stats</a>
+      </p>`,
     ),
 
   '/history/champions': () =>
@@ -95,6 +113,39 @@ function resolveRoute(pathname, search) {
   if (pathname === '/history/draft' && season) {
     return page(`${season} Draft Results`, draftTable(season));
   }
+
+  // Path-keyed season pages, mirroring the real league's URL shape. These exist
+  // for every season regardless of whether anything links to them.
+  const pathSeason = pathname.match(
+    /^\/history\/(year-by-year|standings|champion|awards)\/(\d{4})$/,
+  );
+  if (pathSeason) {
+    const [, kind, year] = pathSeason;
+    if (!SEASONS.includes(Number(year))) return null; // 404 outside the league's span
+    if (kind === 'champion') {
+      return page(
+        `${year} Champion`,
+        `<table><tr><th>Season</th><th>Champion</th></tr>
+         <tr><td>${year}</td><td>${TEAMS[0][0]}</td></tr></table>`,
+      );
+    }
+    if (kind === 'awards') {
+      return page(
+        `${year} Awards`,
+        `<table><tr><th>Award</th><th>Team</th></tr>
+         <tr><td>Champion</td><td>${TEAMS[0][0]}</td></tr></table>`,
+      );
+    }
+    return page(`${year} Standings`, standingsTable(year));
+  }
+
+  const draftSeason = pathname.match(/^\/draft\/results\/(\d{4}):Pre-season:Pre-season$/);
+  if (draftSeason) {
+    const year = draftSeason[1];
+    if (!SEASONS.includes(Number(year))) return null;
+    return page(`${year} Draft Results`, draftTable(year));
+  }
+
   return null;
 }
 
